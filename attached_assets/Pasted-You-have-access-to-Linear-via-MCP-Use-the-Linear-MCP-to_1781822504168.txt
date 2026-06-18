@@ -1,0 +1,185 @@
+You have access to Linear via MCP. Use the Linear MCP tools to set up our entire project management workspace. Do this step by step, confirming each step as you go. 
+ 
+### Step 1: Find the existing team 
+- The team has already been created manually in Linear. Use the MCP tools to list teams and find the existing one. 
+- Use whatever team exists — do NOT try to create a new team (Linear MCP cannot create teams). 
+ 
+### Step 2: Create Labels 
+Create these labels on the existing team (skip any that already exist): 
+- Phase labels: phase-0, phase-0.5, phase-1, phase-2, phase-3, phase-4, phase-5, phase-6, phase-7, phase-8 
+- Type labels: slice, bug, tech-debt, adr 
+ 
+### Step 3: Create Project 
+- Create a project called "MVP Build" in the Studio team 
+- If it already exists, use it 
+ 
+### Step 4: Create ALL Issues 
+Create each issue below in the Studio team, add it to the "MVP Build" project, apply the listed labels, and set status to "Backlog". 
+ 
+**Phase 0 — Scaffold + Auth + DB** (labels: phase-0, slice): 
+ 
+1. "Scaffold Next.js 15 with TypeScript + Tailwind + shadcn/ui" 
+   Description: "npx create-next-app with TypeScript, Tailwind, ESLint, App Router, src directory. Install deps: drizzle-orm, drizzle-kit, @neondatabase/serverless, @clerk/nextjs, zod, @phosphor-icons/react, motion, sonner. Init shadcn/ui with Zinc theme. Geist fonts via next/font." 
+ 
+2. "Clerk auth integration (sign-in, sign-up, middleware, protected routes)" 
+   Description: "ClerkProvider in layout, middleware.ts with authMiddleware, sign-in/sign-up routes. Protected /dashboard/* routes. Redirect unauthenticated users to /sign-in." 
+ 
+3. "Drizzle ORM + Neon schema push (users table)" 
+   Description: "users table: id (cuid), clerkId (unique), email, name, imageUrl, role (enum: user/admin), createdAt, updatedAt. Drizzle client with Neon serverless driver. src/env.ts validates DATABASE_URL + CLERK keys with Zod." 
+ 
+4. "Clerk webhook → create user record in DB" 
+   Description: "src/app/api/webhooks/clerk/route.ts. Handle user.created → insert into users table. Verify webhook signature with svix." 
+ 
+5. "Landing page (3-section MVP: Hero, Features, CTA + SEO + legal pages)" 
+   Description: "Hero (split-screen), Feature Showcase (3-4 features), Final CTA. SEO: title, meta description, OG image, JSON-LD. Legal: /privacy and /terms placeholder pages." 
+ 
+6. "Authenticated dashboard shell (sidebar layout, header, empty state)" 
+   Description: "Sidebar + header + main content area per DESIGN.md §9.4. Error boundaries on all layouts. Empty state with CTA to onboarding." 
+ 
+**Phase 0.5 — Tracer Bullet** (labels: phase-0.5, slice): 
+ 
+7. "Hardcoded business profile + tracer page shell" 
+   Description: "Add MUAPI_API_KEY, R2 keys, OPENAI_API_KEY to env validation. Hardcoded 'Sunrise Café' business profile. /tracer page with 'Run Tracer' button." 
+ 
+8. "Muapi integration proof (generate photo, parse cost header, save to R2)" 
+   Description: "Minimal MuapiService: generate(model, params). Parse X-MuAPI-Cost-USD header. R2Service: upload(key, buffer). Generate photo → download → upload to R2 → display." 
+ 
+9. "GPT caption proof (generate caption conditioned on business profile)" 
+   Description: "OpenAI wrapper using Vercel AI SDK. generateCaption(business, imageDescription). Display caption + hashtags alongside generated image with cost breakdown." 
+ 
+**Phase 1 — Business Onboarding** (labels: phase-1, slice): 
+ 
+10. "Business Profile schema + CRUD API" 
+11. "Multi-step onboarding wizard UI" 
+12. "Logo upload → auto-detect brand colors" 
+13. "Industry template engine (presets per business type)" 
+14. "Dashboard summary card (business profile overview)" 
+ 
+**Phase 2 — Visual Content Generation Core** (labels: phase-2, slice): 
+ 
+15. "Muapi.ai integration service (API wrapper, credit tracking, error handling, retry)" 
+16. "Brand Knowledge Base — pgvector setup + embedding pipeline" 
+17. "Retrieval service — semantic search for generation context" 
+18. "Model Router (map asset types → optimal models)" 
+19. "Content Plan Proposal engine (agent analyzes business → proposes weekly content)" 
+20. "Product photo generation pipeline (upload → bg removal → lifestyle scene → reframe)" 
+21. "Social media graphic generation (text-to-image with brand conditioning via RAG)" 
+22. "OpenAI text generation (captions, hashtags, ad copy with retrieved brand context)" 
+23. "Asset Kit assembly + auto-embed (combine media + text, R2 upload, DB save)" 
+24. "Content Plan UI — propose → review → approve → auto-generate → results" 
+25. "Gallery — browsing and managing generated content (thumbs up/down feedback)" 
+26. "Agent Evals — quality tracking, pipeline reliability, performance feedback loop" 
+ 
+**Phase 3 — UGC Video Pipeline** (labels: phase-3, slice): 
+ 
+27. "Script generation (GPT-4.1-mini → 15-sec product review scripts)" 
+28. "Voiceover generation (mmaudio-v2-text-to-audio via Muapi)" 
+29. "Talking head / lip-sync video (creatify-lipsync via Muapi)" 
+30. "Product B-roll animation (kling-v2.1-standard-i2v via Muapi)" 
+31. "Video assembly (server-side FFmpeg: combine clips)" 
+32. "Multi-format reframe (luma-flash-reframe: 9:16, 1:1, 16:9)" 
+33. "UGC review UI (propose → review script + presenter → confirm → progress → result)" 
+ 
+**Phase 4 — Social Publishing** (labels: phase-4, slice): 
+ 
+34. "Social account connection flow (OAuth via Muapi connect-url)" 
+35. "Connected accounts management UI (list, rename, disconnect)" 
+36. "Publish-to-YouTube flow" 
+37. "Publish-to-TikTok flow" 
+38. "Publish-to-Instagram flow" 
+39. "Publishing history + status tracking" 
+ 
+**Phase 5 — Content Calendar + Scheduling** (labels: phase-5, slice): 
+ 
+40. "Calendar data model (calendar_entries table, linked to content_plans)" 
+41. "Visual calendar UI (month/week view, drag-and-drop)" 
+42. "Scheduled publishing (cron checks entries → calls Muapi publish)" 
+43. "Calendar status tracking (planned → generated → scheduled → published)" 
+ 
+**Phase 6 — Stripe Billing** (labels: phase-6, slice): 
+ 
+44. "Stripe integration (products, prices, checkout sessions)" 
+45. "Subscription management UI (current plan, usage, upgrade/downgrade)" 
+46. "Generation credit tracking (count per billing period, enforce limits)" 
+47. "Webhook handlers (subscription lifecycle events)" 
+48. "Feature gating (UGC video → Pro+, publishing → Pro+, calendar → Business)" 
+ 
+**Phase 7 — Admin Panel + Analytics** (labels: phase-7, slice): 
+ 
+49. "Admin auth guard (role check middleware, admin layout)" 
+50. "Dashboard overview (total users, free/paid split, MRR, API costs)" 
+51. "CRM user detail view (profile, business, generations, costs, subscription)" 
+52. "Revenue analytics (MRR chart, conversion funnel, churn rate, LTV)" 
+53. "Cost analytics (Muapi costs, OpenAI costs, margin per tier, cost alerts)" 
+54. "Admin actions (upgrade/downgrade users, add credits, suspend, send emails)" 
+ 
+**Phase 8 — Observability + Email** (labels: phase-8, slice): 
+ 
+55. "Google Analytics 4 (landing page events: page_view, cta_click)" 
+56. "PostHog integration (product analytics: feature_used, generation events)" 
+57. "Sentry error tracking (server + client, source maps, performance monitoring)" 
+58. "Brevo email service (welcome email on signup, transactional email service)" 
+ 
+### Step 5: Set Up Dependencies 
+Use Linear's "blocked by" relations to set up the dependency chain: 
+ 
+Phase 0 internal: #2 blocked by #1, #3 blocked by #1, #4 blocked by #2 and #3, #5 blocked by #1, #6 blocked by #2 and #5 
+ 
+Phase 0.5 depends on Phase 0: #7 blocked by #6 
+Phase 0.5 internal: #8 blocked by #7, #9 blocked by #8 
+ 
+Phase 1 depends on Phase 0.5: #10 blocked by #9 
+Phase 1 internal: #11 blocked by #10, #12 blocked by #11, #13 blocked by #10, #14 blocked by #11 and #13 
+ 
+Phase 2 depends on Phase 1: #15 blocked by #14 
+Phase 3 depends on Phase 2: #27 blocked by #26 
+Phase 4 depends on Phase 2: #34 blocked by #26 
+Phase 5 depends on Phase 4: #40 blocked by #39 
+Phase 6 depends on Phase 2: #44 blocked by #26 
+Phase 7 depends on Phase 6: #49 blocked by #48 
+Phase 8 depends on Phase 7: #55 blocked by #54 
+ 
+Within each phase, issues are sequential: each blocked by the previous one. 
+ 
+### Step 6: Update project description 
+Update the "MVP Build" project with this description: 
+
+AI Content Studio — Full-stack SaaS for SMB social media content generation. 
+
+Users describe their business → the app generates product photos, social graphics, UGC-style video ads, captions, hashtags, and a content calendar → publishes directly to YouTube, TikTok, and Instagram. 
+
+Tech Stack: Next.js 15 · TypeScript · Tailwind · Clerk · Neon + Drizzle · Muapi.ai · OpenAI · Stripe · Cloudflare R2 
+
+9 phases · 58 slices · Go-live target: Phase 0–7 · Post-launch: Phase 8 (observability) 
+
+ 
+### Step 7: Create Milestones 
+Create a milestone for each phase inside the "MVP Build" project. Assign the corresponding issues to each milestone so progress bars show on the overview page. 
+ 
+- Milestone "Phase 0 — Scaffold + Auth + DB" → assign issues #1-#6 
+- Milestone "Phase 0.5 — Tracer Bullet" → assign issues #7-#9 
+- Milestone "Phase 1 — Business Onboarding" → assign issues #10-#14 
+- Milestone "Phase 2 — Visual Generation Core" → assign issues #15-#26 
+- Milestone "Phase 3 — UGC Video Pipeline" → assign issues #27-#33 
+- Milestone "Phase 4 — Social Publishing" → assign issues #34-#39 
+- Milestone "Phase 5 — Content Calendar" → assign issues #40-#43 
+- Milestone "Phase 6 — Stripe Billing" → assign issues #44-#48 
+- Milestone "Phase 7 — Admin Panel" → assign issues #49-#54 
+- Milestone "Phase 8 — Observability + Email" → assign issues #55-#58 
+ 
+If the MCP cannot create milestones, tell me and I will create them manually. 
+ 
+### Step 8: Move first issue to Todo 
+Move issue #1 ("Scaffold Next.js 15...") to "Todo" status — it has no blockers, it's the starting point. 
+ 
+### Step 9: Print summary 
+Tell me: 
+- Team name and ID 
+- Project name + description confirmed 
+- How many labels were created 
+- How many issues were created 
+- How many dependencies were set 
+- How many milestones were created 
+- Confirm: "✅ Linear setup complete. First issue is in Todo." 
+ 
+If any step fails, tell me exactly what went wrong so I can fix it. 
