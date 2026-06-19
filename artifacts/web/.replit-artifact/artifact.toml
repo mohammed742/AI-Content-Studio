@@ -1,0 +1,21 @@
+kind = "web"
+previewPath = "/"
+title = "AI Content Studio"
+version = "1.0.0"
+id = "artifacts/web"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = ["/"]
+localPort = 22333
+
+[services.development]
+run = "pnpm --filter @workspace/web run dev"
+
+[services.env]
+PORT = "22333"

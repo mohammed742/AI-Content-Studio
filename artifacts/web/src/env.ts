@@ -1,0 +1,28 @@
+/**
+ * Server-side environment variable validation (Zod).
+ * Client-safe vars must use NEXT_PUBLIC_ prefix.
+ *
+ * Expand this file in each Phase 0 slice:
+ *   DEV-1  — DATABASE_URL
+ *   DEV-2  — NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
+ *   DEV-4  — CLERK_WEBHOOK_SECRET
+ */
+import { z } from "zod";
+
+const envSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error(
+    "❌ Invalid environment variables:",
+    parsed.error.flatten().fieldErrors
+  );
+  throw new Error("Invalid environment variables — check server logs");
+}
+
+export const env = parsed.data;
