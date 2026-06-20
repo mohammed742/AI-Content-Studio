@@ -1,0 +1,113 @@
+We need to update our protocol files with two improvements:
+1. A "teach" layer ‚Äî every Linear completion comment should include a beginner-friendly "What You Learned" section
+2. A QA checklist ‚Äî every Linear completion comment should include a testing checklist for the reviewer
+
+Here are the changes. Make them precisely ‚Äî do not rewrite entire files, only modify the specific sections mentioned.
+
+---
+
+### FILE 1: replit.md ‚Äî Add 3 lines to the "During" section (after the line about CONTEXT.md vocabulary)
+
+Add these lines at the end of the "### During" section:
+
+```
+- After completing a slice, scan your code for domain terms. If any term is used inconsistently with CONTEXT.md, fix the code or update CONTEXT.md.
+- Update the "Concepts Introduced" list in PROGRESS.md with any new concepts from this slice.
+```
+
+### FILE 2: replit.md ‚Äî Expand the "End" section, step 2
+
+Replace the current step 2 in "### End":
+```
+2. Post **one completion comment** on Linear (what was done, what was tested, QA checklist, Portfolio Checkpoint ‚Äî see `workflow-protocols.md`)
+```
+
+With this expanded version:
+```
+2. Post **one completion comment** on Linear issue with these sections:
+   - **What was built** ‚Äî plain English, no jargon
+   - **What was tested** ‚Äî which checks passed (typecheck, lint, test, build)
+   - **üéì What You Learned** ‚Äî identify the 2-3 most important concepts introduced by this slice. Follow these rules strictly:
+     (1) Name concepts, not tools. Say "type safety" not "TypeScript", "authentication" not "Clerk", "schema-as-code" not "Drizzle". The concept transfers; the tool name doesn't.
+     (2) Do NOT explain technologies like a documentation page. Explain the specific problem that was solved and why the decision mattered for THIS project.
+     (3) For each concept use this format:
+         ### [Concept Name]
+         [One sentence: what real-world problem this solves.]
+         **Without it:** [what goes wrong ‚Äî be specific to this project]
+         **With it:** [what improves ‚Äî be specific to this project]
+         ‚Üí [Link to official docs from RESOURCES.md]
+     (4) No jargon without immediate explanation. No code snippets. No overused analogies (restaurants, kitchens, cooking, recipes, filing cabinets, etc.).
+     (5) Check PROGRESS.md "Concepts Introduced" ‚Äî don't re-explain concepts from earlier slices.
+     (6) Every explanation must answer: "Why should I care?"
+     (7) The entire üéì section must take under 2 minutes to read. If it's longer, cut it.
+   - **üí¨ Explain It Yourself** ‚Äî two questions that force the reader to recall what they learned without looking back:
+     (1) **Client question:** "If a client asked 'Why did you build it this way instead of the simpler approach?' ‚Äî what would you say?"
+     (2) **Interview question:** "Explain [the main concept from this slice] in 30 seconds as if the interviewer has never heard of it."
+   - **QA Checklist** ‚Äî a markdown checklist (`- [ ]`) of specific steps the reviewer should follow to verify the work. Keep it concrete and actionable (e.g. "Sign up with a test account and confirm a user row appears in the database"). No vague items like "verify it works."
+   - **Anything the reviewer should know** ‚Äî gotchas, deviations from the plan, decisions made
+```
+
+### FILE 3: PROGRESS.md ‚Äî Add a "Concepts Introduced" section
+
+Add this section after the "Current status" section (before "Session log"):
+
+```markdown
+## Concepts Introduced (cumulative)
+<!-- Updated by agent after each slice. Don't re-explain known concepts in Linear comments. -->
+- DAA-40: Next.js framework, TypeScript strict mode, App Router, Tailwind CSS, shadcn/ui component library
+```
+
+### FILE 4: Create a new file called RESOURCES.md in the project root
+
+Create this file with these contents:
+
+```markdown
+# AI Content Studio ‚Äî Resources
+
+> Curated official docs for each technology. Link to these in "What You Learned" sections.
+
+## Framework & Language
+- [Next.js 15 Docs](https://nextjs.org/docs) ‚Äî routing, server components, API routes, middleware
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/) ‚Äî types, interfaces, generics
+- [Tailwind CSS v4 Docs](https://tailwindcss.com/docs) ‚Äî utility classes, CSS-native config
+
+## Auth
+- [Clerk Docs](https://clerk.com/docs) ‚Äî setup, webhooks, middleware, user management
+
+## Database
+- [Drizzle ORM Docs](https://orm.drizzle.team) ‚Äî schema definition, queries, migrations
+- [Neon Docs](https://neon.tech/docs) ‚Äî connection strings, pgvector, serverless driver
+- [pgvector Guide](https://github.com/pgvector/pgvector) ‚Äî vector columns, similarity search
+
+## AI Services
+- [Muapi.ai Docs](https://docs.muapi.ai) ‚Äî model catalog, social publishing API, cost tracking
+- [Vercel AI SDK](https://sdk.vercel.ai/docs) ‚Äî generateText, structured output, streaming
+- [OpenAI API Reference](https://platform.openai.com/docs/api-reference) ‚Äî models, tokens, pricing
+
+## Payments
+- [Stripe Docs](https://docs.stripe.com) ‚Äî subscriptions, checkout, webhooks, billing portal
+
+## Storage
+- [Cloudflare R2 Docs](https://developers.cloudflare.com/r2) ‚Äî S3-compatible API, bucket setup
+
+## Monitoring (Phase 8)
+- [Sentry Next.js Guide](https://docs.sentry.io/platforms/javascript/guides/nextjs/) ‚Äî error tracking
+- [PostHog Docs](https://posthog.com/docs) ‚Äî product analytics, event tracking
+- [Google Analytics 4](https://developers.google.com/analytics) ‚Äî traffic analytics
+```
+
+### FILE 5: workflow.md ‚Äî No changes needed
+
+The session lifecycle already references the completion comment format. The replit.md changes are sufficient.
+
+---
+
+After making these changes, confirm:
+1. replit.md "During" section has the 2 new lines
+2. replit.md "End" step 2 is expanded with the 5-section format
+3. PROGRESS.md has the "Concepts Introduced" section
+4. RESOURCES.md exists in the project root
+5. Show me the line count of each modified file
+
+Do not start building any slices. Just make these edits and confirm.
+```

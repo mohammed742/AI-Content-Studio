@@ -18,6 +18,10 @@
   - `artifacts/web/src/app/globals.css`, `layout.tsx`, `page.tsx`
   - `artifacts/web/src/lib/utils.ts`, `src/env.ts`
 
+## Concepts Introduced (cumulative)
+<!-- Updated by agent after each slice. Don't re-explain known concepts in Linear comments. -->
+- DEV-3: Next.js framework, TypeScript strict mode, App Router, Tailwind CSS, shadcn/ui component library
+
 ---
 
 ## Session log
