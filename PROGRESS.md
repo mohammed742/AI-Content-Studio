@@ -6,15 +6,22 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-4 → Needs Review
-- **Next action**: DEV-5 (Landing page: 3-section MVP + SEO + legal pages) — check blockers first
-- **UI work**: no
+- **Current sub-task**: DEV-5 → Needs Review
+- **Next action**: DEV-6a (Authenticated dashboard shell) — check blockers first
+- **UI work**: yes
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/src/app/api/webhooks/clerk/route.ts` (new — POST handler for Clerk webhooks)
-  - `artifacts/web/src/middleware.ts` (updated — webhook route bypass)
-  - `artifacts/web/src/env.ts` (updated — CLERK_WEBHOOK_SECRET validated)
-  - `artifacts/web/package.json` (updated — svix dependency added)
+  - `artifacts/web/src/app/page.tsx` (landing page — 3 sections)
+  - `artifacts/web/src/app/layout.tsx` (SEO metadata, metadataBase)
+  - `artifacts/web/src/app/opengraph-image.tsx` (dynamic OG image)
+  - `artifacts/web/src/app/privacy/page.tsx` (new — privacy policy)
+  - `artifacts/web/src/app/terms/page.tsx` (new — terms of service)
+  - `artifacts/web/src/components/landing/nav-bar.tsx` (new — sticky nav)
+  - `artifacts/web/src/components/landing/hero-section.tsx` (new — hero section)
+  - `artifacts/web/src/components/landing/features-section.tsx` (new — features)
+  - `artifacts/web/src/components/landing/cta-section.tsx` (new — final CTA)
+  - `artifacts/web/src/components/landing/footer.tsx` (new — footer)
+  - `artifacts/web/src/env.ts` (updated — build-phase env validation)
 
 ## Concepts Introduced (cumulative)
 
@@ -22,10 +29,32 @@
 - DEV-1: Schema-as-code (Drizzle ORM type-safe table definitions), fail-fast env validation (Zod), Neon serverless PostgreSQL
 - DEV-2: Auth middleware (edge-level route protection), catch-all auth routes (Clerk sub-step routing)
 - DEV-4: Webhook signature verification (svix), idempotent writes (duplicate-safe DB operations), middleware bypass (whitelist pattern for server-to-server routes)
+- DEV-5: Progressive Enhancement (Server Components + Client Components), SEO as Infrastructure (metadata exports, OG images, structured data), Component Locality (splitting pages into focused sections)
 
 ---
 
 ## Session log
+
+### 2026-06-20 — DEV-5: Landing page (3-section MVP + SEO + legal pages)
+
+**Done:**
+- Created landing page at `/` with 3 sections:
+  - Hero: split-screen layout (headline + CTA left, product preview mockup right)
+  - Feature Showcase: 4 feature cards (Product Photos, Social Graphics, UGC Videos, Auto Calendar)
+  - Final CTA: gradient background with "Ready to transform your social media?"
+- Created sticky nav bar with mobile hamburger menu, SignUpButton with fallbackRedirectUrl
+- Created footer with Product + Legal links
+- Created `/privacy` and `/terms` placeholder pages with Zinc+Emerald styling
+- Updated `layout.tsx` with comprehensive SEO: title, description, OG tags, Twitter card, metadataBase, robots
+- Created `/opengraph-image.tsx` (edge runtime, dynamic 1200x630 PNG)
+- Added JSON-LD SoftwareApplication schema on landing page
+- Updated `env.ts` to skip validation during build phase (NEXT_PHASE check)
+- `pnpm --filter @workspace/web run typecheck` → 0 errors
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- Screenshot verification: landing page, privacy, terms all render correctly
+- Linear: DEV-5 completion comment posted (all 6 sections)
+
+---
 
 ### 2026-06-20 — DEV-4: Clerk webhook → create user record in DB
 

@@ -34,11 +34,17 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error(
-    "❌ Invalid environment variables:",
-    parsed.error.flatten().fieldErrors,
-  );
-  throw new Error("Invalid environment variables — check server logs");
+  const errors = parsed.error.flatten().fieldErrors;
+  console.error("❌ Invalid environment variables:", errors);
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    console.warn(
+      "Build phase detected — skipping env validation (server will validate at runtime)",
+    );
+  } else {
+    throw new Error("Invalid environment variables — check server logs");
+  }
 }
 
-export const env = parsed.data;
+export const env = parsed.success
+  ? parsed.data
+  : (process.env as unknown as z.infer<typeof envSchema>);

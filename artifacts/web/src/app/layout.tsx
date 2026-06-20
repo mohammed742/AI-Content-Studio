@@ -6,12 +6,27 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://aicontentstudio.app"),
   title: {
-    default: "AI Content Studio",
+    default: "AI Content Studio — AI-Powered Social Content for Small Businesses",
     template: "%s | AI Content Studio",
   },
   description:
-    "AI-powered social media content for small businesses. Generate product photos, captions, hashtags, and video ads in seconds.",
+    "Generate product photos, video ads, captions, and a full content calendar — all tailored to your business. Start free.",
+  openGraph: {
+    title: "AI Content Studio — AI-Powered Social Content for Small Businesses",
+    description:
+      "Generate product photos, video ads, captions, and a full content calendar — all tailored to your business. Start free.",
+    type: "website",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI Content Studio — AI-Powered Social Content for Small Businesses",
+    description:
+      "Generate product photos, video ads, captions, and a full content calendar — all tailored to your business. Start free.",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+  },
   robots: { index: true, follow: true },
 };
 
