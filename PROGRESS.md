@@ -6,25 +6,43 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-3 → Needs Review ✅
-- **Next action**: Begin DEV-1 (Neon DB + Drizzle schema) — check Linear blockers first
+- **Current sub-task**: DEV-1 → Needs Review ✅
+- **Next action**: Begin DEV-2 (Clerk auth integration) — check Linear blockers first
 - **UI work**: no
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/` (entire Next.js scaffold — new artifact)
-  - `artifacts/web/package.json`, `tsconfig.json`, `next.config.ts`, `tailwind.config.ts`
-  - `artifacts/web/postcss.config.mjs`, `components.json`, `.gitignore`
-  - `artifacts/web/.replit-artifact/artifact.toml` (replaced — Next.js config)
-  - `artifacts/web/src/app/globals.css`, `layout.tsx`, `page.tsx`
-  - `artifacts/web/src/lib/utils.ts`, `src/env.ts`
+  - `artifacts/web/src/db/schema.ts` (new — users table)
+  - `artifacts/web/src/db/index.ts` (new — Drizzle + Neon client)
+  - `artifacts/web/drizzle.config.ts` (new — Drizzle Kit config)
+  - `artifacts/web/src/env.ts` (updated — DATABASE_URL, CLERK keys validated)
+  - `artifacts/web/package.json` (updated — db:push, db:studio scripts)
+  - `artifacts/web/.eslintrc.json` (new — ESLint config)
 
 ## Concepts Introduced (cumulative)
 <!-- Updated by agent after each slice. Don't re-explain known concepts in Linear comments. -->
 - DEV-3: Next.js framework, TypeScript strict mode, App Router, Tailwind CSS, shadcn/ui component library
+- DEV-1: Schema-as-code (Drizzle ORM type-safe table definitions), fail-fast env validation (Zod), Neon serverless PostgreSQL
 
 ---
 
 ## Session log
+
+### 2026-06-20 — DEV-1: Drizzle ORM + Neon schema push (users table)
+
+**Done:**
+- Created `src/db/schema.ts` with `users` table (id/cuid, clerkId unique, email, name, imageUrl, role enum, createdAt/updatedAt)
+- Created `src/db/index.ts` with Drizzle client using `@neondatabase/serverless` (Neon HTTP driver)
+- Created `drizzle.config.ts` for Drizzle Kit schema push
+- Updated `src/env.ts` to validate `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` with Zod
+- Added `db:push` and `db:studio` scripts to `package.json`
+- Created `.eslintrc.json` to resolve missing ESLint config from scaffold
+- Used hand-written Zod insert schema instead of `drizzle-zod` (peer dependency mismatch with Zod v3)
+- Full workspace `pnpm run typecheck` → 0 errors
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- Did NOT run `db:push` (no DATABASE_URL in env yet)
+- Linear: DEV-1 completion comment posted (all 6 sections); moved → Needs Review
+
+---
 
 ### 2026-06-19 — DEV-3: Scaffold Next.js 15 + Tailwind + shadcn/ui
 
