@@ -18,6 +18,14 @@ const envSchema = z.object({
     .string()
     .min(1, "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required"),
   CLERK_SECRET_KEY: z.string().min(1, "CLERK_SECRET_KEY is required"),
+  NEXT_PUBLIC_CLERK_SIGN_IN_URL: z
+    .string()
+    .min(1, "NEXT_PUBLIC_CLERK_SIGN_IN_URL is required")
+    .default("/sign-in"),
+  NEXT_PUBLIC_CLERK_SIGN_UP_URL: z
+    .string()
+    .min(1, "NEXT_PUBLIC_CLERK_SIGN_UP_URL is required")
+    .default("/sign-up"),
 });
 
 const parsed = envSchema.safeParse(process.env);

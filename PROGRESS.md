@@ -6,26 +6,40 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-1 → Needs Review ✅
-- **Next action**: Begin DEV-2 (Clerk auth integration) — check Linear blockers first
+- **Current sub-task**: DEV-2 → Needs Review
+- **Next action**: DEV-4 (Clerk webhook → create user record in DB) — check blockers first
 - **UI work**: no
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/src/db/schema.ts` (new — users table)
-  - `artifacts/web/src/db/index.ts` (new — Drizzle + Neon client)
-  - `artifacts/web/drizzle.config.ts` (new — Drizzle Kit config)
-  - `artifacts/web/src/env.ts` (updated — DATABASE_URL, CLERK keys validated)
-  - `artifacts/web/package.json` (updated — db:push, db:studio scripts)
-  - `artifacts/web/.eslintrc.json` (new — ESLint config)
+  - `artifacts/web/src/app/layout.tsx` (updated — ClerkProvider wrapping app)
+  - `artifacts/web/src/middleware.ts` (new — clerkMiddleware protecting /dashboard/*)
+  - `artifacts/web/src/app/sign-in/[[...sign-in]]/page.tsx` (new — Clerk SignIn with dark theme)
+  - `artifacts/web/src/app/sign-up/[[...sign-up]]/page.tsx` (new — Clerk SignUp with dark theme)
+  - `artifacts/web/src/env.ts` (updated — NEXT_PUBLIC_CLERK_SIGN_IN_URL / SIGN_UP_URL validated)
 
 ## Concepts Introduced (cumulative)
 <!-- Updated by agent after each slice. Don't re-explain known concepts in Linear comments. -->
 - DEV-3: Next.js framework, TypeScript strict mode, App Router, Tailwind CSS, shadcn/ui component library
 - DEV-1: Schema-as-code (Drizzle ORM type-safe table definitions), fail-fast env validation (Zod), Neon serverless PostgreSQL
+- DEV-2: Auth middleware (edge-level route protection), catch-all auth routes (Clerk sub-step routing)
 
 ---
 
 ## Session log
+
+### 2026-06-20 — DEV-2: Clerk auth integration (sign-in, sign-up, middleware, protected routes)
+
+**Done:**
+- Added ClerkProvider wrapper in `src/app/layout.tsx` (children inside html body)
+- Created `src/middleware.ts` with clerkMiddleware + createRouteMatcher protecting `/dashboard(.*)`
+- Created `/sign-in/[[...sign-in]]/page.tsx` with Clerk SignIn component (Zinc/Emerald dark theme)
+- Created `/sign-up/[[...sign-up]]/page.tsx` with Clerk SignUp component (matching dark theme)
+- Updated `src/env.ts` with NEXT_PUBLIC_CLERK_SIGN_IN_URL and NEXT_PUBLIC_CLERK_SIGN_UP_URL (defaults to /sign-in and /sign-up)
+- `pnpm --filter @workspace/web run typecheck` → 0 errors
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- Linear: DEV-2 completion comment posted (all 5 sections); moved → Needs Review
+
+---
 
 ### 2026-06-20 — DEV-1: Drizzle ORM + Neon schema push (users table)
 
