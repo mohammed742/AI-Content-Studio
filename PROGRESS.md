@@ -6,22 +6,29 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-5 → Needs Review
-- **Next action**: DEV-6a (Authenticated dashboard shell) — check blockers first
+- **Current sub-task**: DEV-6 → Needs Review
+- **Next action**: Phase 0 complete — all 6 slices done. Phase 1 readiness review.
 - **UI work**: yes
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/src/app/page.tsx` (landing page — 3 sections)
-  - `artifacts/web/src/app/layout.tsx` (SEO metadata, metadataBase)
-  - `artifacts/web/src/app/opengraph-image.tsx` (dynamic OG image)
-  - `artifacts/web/src/app/privacy/page.tsx` (new — privacy policy)
-  - `artifacts/web/src/app/terms/page.tsx` (new — terms of service)
-  - `artifacts/web/src/components/landing/nav-bar.tsx` (new — sticky nav)
-  - `artifacts/web/src/components/landing/hero-section.tsx` (new — hero section)
-  - `artifacts/web/src/components/landing/features-section.tsx` (new — features)
-  - `artifacts/web/src/components/landing/cta-section.tsx` (new — final CTA)
-  - `artifacts/web/src/components/landing/footer.tsx` (new — footer)
-  - `artifacts/web/src/env.ts` (updated — build-phase env validation)
+  - `artifacts/web/src/app/dashboard/layout.tsx` (new — dashboard layout wrapper)
+  - `artifacts/web/src/app/dashboard/page.tsx` (new — dashboard empty state)
+  - `artifacts/web/src/app/dashboard/error.tsx` (new — error boundary)
+  - `artifacts/web/src/components/dashboard/dashboard-shell.tsx` (new — sidebar + main layout)
+  - `artifacts/web/src/components/dashboard/sidebar.tsx` (new — navigation sidebar)
+  - `artifacts/web/src/components/dashboard/header.tsx` (new — sticky header + breadcrumbs)
+  - `artifacts/web/src/components/dashboard/empty-state.tsx` (new — welcome card for new users)
+  - `artifacts/web/src/components/dashboard/mobile-sidebar.tsx` (new — mobile placeholder)
+  - `artifacts/web/src/app/layout.tsx` (updated — added dynamic export)
+  - `artifacts/web/src/components/ui/button.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/avatar.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/sheet.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/skeleton.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/separator.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/tooltip.tsx` (shadcn — already existed)
+  - `artifacts/web/src/components/ui/card.tsx` (shadcn — new)
+  - `artifacts/web/src/components/ui/collapsible.tsx` (shadcn — new)
+  - `artifacts/web/package.json` (updated — added `lucide-react`, `class-variance-authority`)
 
 ## Concepts Introduced (cumulative)
 
@@ -30,10 +37,31 @@
 - DEV-2: Auth middleware (edge-level route protection), catch-all auth routes (Clerk sub-step routing)
 - DEV-4: Webhook signature verification (svix), idempotent writes (duplicate-safe DB operations), middleware bypass (whitelist pattern for server-to-server routes)
 - DEV-5: Progressive Enhancement (Server Components + Client Components), SEO as Infrastructure (metadata exports, OG images, structured data), Component Locality (splitting pages into focused sections)
+- DEV-6: Route Group Isolation (dashboard-only layouts), Dynamic Rendering for Auth-Dependent Pages, CSS-Only Transitions for Collapsible UI
 
 ---
 
 ## Session log
+
+### 2026-06-20 — DEV-6: Authenticated dashboard shell (sidebar + header + empty state)
+
+**Done:**
+- Created dashboard route group at `/app/dashboard/` with `layout.tsx`, `page.tsx`, `error.tsx`
+- Created `DashboardShell` component with fixed sidebar + main content area, per DESIGN.md §9.4
+- Created `Sidebar` component: 5 nav items (Dashboard, Content Plan, Calendar, Gallery, Settings), collapsible (280px↔64px), tooltips on collapsed icons, user avatar + email at bottom, sign-out button
+- Created `Header` component: sticky top bar, mobile hamburger menu (Sheet), page title, breadcrumbs
+- Created `EmptyState` component: centered card with Sparkle icon, welcome message, CTA to `/onboarding`
+- Created `error.tsx` boundary: "Try again" reset + "Go to Dashboard" fallback
+- Mobile responsive: sidebar hidden on <1024px, hamburger opens Sheet-based sidebar
+- Added `dynamic: "force-dynamic"` to dashboard layout and root layout to prevent Clerk static-prerender failures
+- Added `lucide-react` and `class-variance-authority` dependencies (missing from shadcn/ui setup)
+- `pnpm --filter @workspace/web run typecheck` → 0 errors
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- `NEXT_PHASE=phase-production-build npx next build --no-lint` → completed (9 routes, all dynamic)
+- Unauthenticated `/dashboard` → correctly redirects to Clerk sign-in
+- Linear: DEV-6 completion comment posted (all 6 sections); moved → Needs Review
+
+---
 
 ### 2026-06-20 — DEV-5: Landing page (3-section MVP + SEO + legal pages)
 
