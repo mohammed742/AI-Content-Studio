@@ -6,26 +6,43 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-2 → Needs Review
-- **Next action**: DEV-4 (Clerk webhook → create user record in DB) — check blockers first
+- **Current sub-task**: DEV-4 → Needs Review
+- **Next action**: DEV-5 (Landing page: 3-section MVP + SEO + legal pages) — check blockers first
 - **UI work**: no
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/src/app/layout.tsx` (updated — ClerkProvider wrapping app)
-  - `artifacts/web/src/middleware.ts` (new — clerkMiddleware protecting /dashboard/*)
-  - `artifacts/web/src/app/sign-in/[[...sign-in]]/page.tsx` (new — Clerk SignIn with dark theme)
-  - `artifacts/web/src/app/sign-up/[[...sign-up]]/page.tsx` (new — Clerk SignUp with dark theme)
-  - `artifacts/web/src/env.ts` (updated — NEXT_PUBLIC_CLERK_SIGN_IN_URL / SIGN_UP_URL validated)
+  - `artifacts/web/src/app/api/webhooks/clerk/route.ts` (new — POST handler for Clerk webhooks)
+  - `artifacts/web/src/middleware.ts` (updated — webhook route bypass)
+  - `artifacts/web/src/env.ts` (updated — CLERK_WEBHOOK_SECRET validated)
+  - `artifacts/web/package.json` (updated — svix dependency added)
 
 ## Concepts Introduced (cumulative)
-<!-- Updated by agent after each slice. Don't re-explain known concepts in Linear comments. -->
+
 - DEV-3: Next.js framework, TypeScript strict mode, App Router, Tailwind CSS, shadcn/ui component library
 - DEV-1: Schema-as-code (Drizzle ORM type-safe table definitions), fail-fast env validation (Zod), Neon serverless PostgreSQL
 - DEV-2: Auth middleware (edge-level route protection), catch-all auth routes (Clerk sub-step routing)
+- DEV-4: Webhook signature verification (svix), idempotent writes (duplicate-safe DB operations), middleware bypass (whitelist pattern for server-to-server routes)
 
 ---
 
 ## Session log
+
+### 2026-06-20 — DEV-4: Clerk webhook → create user record in DB
+
+**Done:**
+- Created `src/app/api/webhooks/clerk/route.ts` with POST handler
+  - Verifies svix signature using `CLERK_WEBHOOK_SECRET` to prevent spoofed payloads
+  - Handles `user.created` → inserts new row into `users` table (with duplicate-check)
+  - Handles `user.updated` → updates existing row in `users` table
+  - Returns 400 for missing svix headers or invalid signature, 200 on success
+- Updated `src/env.ts` to validate `CLERK_WEBHOOK_SECRET` with Zod
+- Updated `src/middleware.ts` to bypass Clerk auth for `/api/webhooks(.*)` routes
+- Installed `svix` v1.96.0 as runtime dependency
+- `pnpm --filter @workspace/web run typecheck` → 0 errors
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- Linear: DEV-4 completion comment posted (all 6 sections); moved → Needs Review
+
+---
 
 ### 2026-06-20 — DEV-2: Clerk auth integration (sign-in, sign-up, middleware, protected routes)
 

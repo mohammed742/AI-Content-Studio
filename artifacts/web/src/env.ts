@@ -26,6 +26,9 @@ const envSchema = z.object({
     .string()
     .min(1, "NEXT_PUBLIC_CLERK_SIGN_UP_URL is required")
     .default("/sign-up"),
+  CLERK_WEBHOOK_SECRET: z
+    .string()
+    .min(1, "CLERK_WEBHOOK_SECRET is required"),
 });
 
 const parsed = envSchema.safeParse(process.env);
