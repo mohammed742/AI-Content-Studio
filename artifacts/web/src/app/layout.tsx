@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Toaster } from "sonner";
 import { ClerkProvider } from "@clerk/nextjs";
+import { env } from "@/env";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider publishableKey={env.CLERK_PUBLISHABLE_KEY}>
       <html
         lang="en"
         className={`dark ${GeistSans.variable} ${GeistMono.variable}`}

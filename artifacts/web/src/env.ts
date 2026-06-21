@@ -4,8 +4,12 @@
  *
  * Expand this file in each Phase 0 slice:
  *   DEV-1  — DATABASE_URL
- *   DEV-2  — NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
+ *   DEV-2  — CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY
  *   DEV-4  — CLERK_WEBHOOK_SECRET
+ *
+ * Note: CLERK_PUBLISHABLE_KEY is validated server-side and passed explicitly
+ * to ClerkProvider as a prop — this avoids relying on NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ * being correctly set in the environment.
  */
 import { z } from "zod";
 
@@ -14,9 +18,12 @@ const envSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z
+  CLERK_PUBLISHABLE_KEY: z
     .string()
-    .min(1, "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required"),
+    .min(1, "CLERK_PUBLISHABLE_KEY is required")
+    .refine((v) => v.startsWith("pk_"), {
+      message: "CLERK_PUBLISHABLE_KEY must start with 'pk_'",
+    }),
   CLERK_SECRET_KEY: z.string().min(1, "CLERK_SECRET_KEY is required"),
   NEXT_PUBLIC_CLERK_SIGN_IN_URL: z
     .string()
