@@ -18,11 +18,11 @@ const envSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  CLERK_PUBLISHABLE_KEY: z
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z
     .string()
-    .min(1, "CLERK_PUBLISHABLE_KEY is required")
+    .min(1, "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required")
     .refine((v) => v.startsWith("pk_"), {
-      message: "CLERK_PUBLISHABLE_KEY must start with 'pk_'",
+      message: "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY must start with 'pk_'",
     }),
   CLERK_SECRET_KEY: z.string().min(1, "CLERK_SECRET_KEY is required"),
   NEXT_PUBLIC_CLERK_SIGN_IN_URL: z
