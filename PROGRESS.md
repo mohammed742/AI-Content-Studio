@@ -6,28 +6,17 @@
 
 - **Active phase**: Phase 0 — Scaffold + Auth + DB
 - **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: DEV-6 → Needs Review
-- **Next action**: Phase 0 complete — all 6 slices done. Phase 1 readiness review.
+- **Current sub-task**: Task-3 (sign-in/sign-up end-to-end) → Done
+- **Next action**: Phase 1 readiness review / pick next Linear issue
 - **UI work**: yes
 - **Blockers**: None
 - **Files modified this session**:
-  - `artifacts/web/src/app/dashboard/layout.tsx` (new — dashboard layout wrapper)
-  - `artifacts/web/src/app/dashboard/page.tsx` (new — dashboard empty state)
-  - `artifacts/web/src/app/dashboard/error.tsx` (new — error boundary)
-  - `artifacts/web/src/components/dashboard/dashboard-shell.tsx` (new — sidebar + main layout)
-  - `artifacts/web/src/components/dashboard/sidebar.tsx` (new — navigation sidebar)
-  - `artifacts/web/src/components/dashboard/header.tsx` (new — sticky header + breadcrumbs)
-  - `artifacts/web/src/components/dashboard/empty-state.tsx` (new — welcome card for new users)
-  - `artifacts/web/src/components/dashboard/mobile-sidebar.tsx` (new — mobile placeholder)
-  - `artifacts/web/src/app/layout.tsx` (updated — added dynamic export)
-  - `artifacts/web/src/components/ui/button.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/avatar.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/sheet.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/skeleton.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/separator.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/tooltip.tsx` (shadcn — already existed)
-  - `artifacts/web/src/components/ui/card.tsx` (shadcn — new)
-  - `artifacts/web/src/components/ui/collapsible.tsx` (shadcn — new)
+  - `artifacts/web/src/app/sign-in/[[...sign-in]]/page.tsx` (updated — fixed deprecated appearance vars, added routing props)
+  - `artifacts/web/src/app/sign-up/[[...sign-up]]/page.tsx` (updated — fixed deprecated appearance vars, added routing props)
+  - `artifacts/web/src/app/layout.tsx` (updated — signInFallbackRedirectUrl/signUpFallbackRedirectUrl, signInUrl/signUpUrl)
+  - `artifacts/web/src/middleware.ts` (updated — redirect authenticated users from sign-in/up to /dashboard)
+  - `artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts` (new — Clerk FAPI proxy)
+  - `artifacts/api-server/src/app.ts` (updated — mounted clerkProxyMiddleware + clerkMiddleware)
   - `artifacts/web/package.json` (updated — added `lucide-react`, `class-variance-authority`)
 
 ## Concepts Introduced (cumulative)
