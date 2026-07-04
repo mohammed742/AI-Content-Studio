@@ -1,2 +1,3 @@
 - [Linear workflow gap](linear-workflow-gap.md) — this project's Linear team has no "Needs Review" status, despite replit.md's session protocol requiring it.
 - [Artifact /api path collision](artifact-api-path-collision.md) — a scaffolded API Server artifact can silently claim /api at the proxy, swallowing a Next.js app's own /api/* routes.
+- [Muapi.ai API contract](muapi-api-contract.md) — x-api-key auth, submit-then-poll flow, model-in-URL-path; verify model availability per-account, not just docs.

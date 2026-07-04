@@ -6,15 +6,16 @@
 
 - **Active phase**: Phase 0.5 — Tracer Bullet
 - **Active plan file**: `plan-phase-0-5.md`
-- **Current sub-task**: DEV-8 (Muapi integration proof — generate product photo, parse cost, save to R2) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status)
+- **Current sub-task**: DEV-8 (Muapi integration proof — generate product photo, parse cost, save to R2) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status). Post-completion bugfix applied this session: real Muapi API contract (was guessed) — see fix log below.
 - **Next action**: Await review/approval on DEV-8, then next tracer slice (real Agent Loop wiring beyond the proof-of-concept)
 - **UI work**: yes
 - **Blockers**: Pre-existing bug found (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
-- **Files modified this session**:
-  - `artifacts/web/src/lib/muapi.ts` (new — `MuapiService.generate`, posts to Muapi, parses `X-MuAPI-Cost-USD` header)
+- **Files modified this session (fix)**:
+  - `artifacts/web/src/lib/muapi.ts` (rewritten — real Muapi contract: `x-api-key` header, `POST /api/v1/{model}` submit-then-poll against `GET /api/v1/predictions/{request_id}/result`, cost from `X-MuAPI-Cost-USD` header/body)
+  - `artifacts/web/src/app/api/tracer/generate-image/route.ts` (model slug changed from invalid `ai-product-photography` to `nano-banana-2`, the only confirmed-available text-to-image model on this account's key)
+- **Files modified in original DEV-8 session**:
   - `artifacts/web/src/lib/r2.ts` (new — `R2Service.upload` via `@aws-sdk/client-s3` against the R2 S3-compatible endpoint)
   - `artifacts/web/src/env.ts` (updated — added `R2_PUBLIC_URL` to Zod schema)
-  - `artifacts/web/src/app/api/tracer/generate-image/route.ts` (new — auth-gated route: Muapi generate → download → R2 upload → `{data, error}` response)
   - `artifacts/web/src/app/dashboard/tracer/page.tsx` (updated — "Run Tracer" now calls the route and renders image/cost/duration/error states)
   - `artifacts/api-server/.replit-artifact/artifact.toml` (updated — moved API Server's proxy path/previewPath from `/api` to `/internal-api`; it was an unused health-check stub colliding with the web app's own `/api/*` routes)
   - `artifacts/api-server/src/app.ts` (updated — router mount moved from `/api` to `/internal-api` to match)
@@ -34,6 +35,26 @@
 ---
 
 ## Session log
+
+### 2026-07-04 — DEV-8 fix: real Muapi API contract (live 404 bug)
+
+**Bug reported:** Clicking "Run Tracer" in production/dev returned `Muapi generate failed (404 Not Found): {"detail":"Not Found"}`.
+
+**Root cause:** The original `src/lib/muapi.ts` was written against a guessed API contract, never verified against real docs: wrong base URL (`https://api.muapi.ai/v1` instead of `.../api/v1`), wrong auth (`Authorization: Bearer` instead of `x-api-key` header), wrong request shape (`POST /generate` with a `model` field, instead of `POST /{model-slug}`), and wrong response handling (treated as synchronous, but Muapi is submit-then-poll).
+
+**Done:**
+- Fetched Muapi's official docs (`muapi.ai/docs/api-reference`, `/docs/authentication`, `/docs/models`) to get the real contract
+- Rewrote `MuapiService.generate`: `x-api-key` header auth, `POST https://api.muapi.ai/api/v1/{model}` to submit, then polls `GET https://api.muapi.ai/api/v1/predictions/{request_id}/result` every 2s (60s timeout) until `status === "completed"`, reads `outputs[0]` for the image URL and `cost.amount_usd`/`X-MuAPI-Cost-USD` header for cost
+- Verified the live model catalog (`GET /api/v1/models`, no auth required) and confirmed via direct `curl`/script testing that the previously-hardcoded model slug (`ai-product-photography`, invalid) and the docs' example slug (`flux-dev`, 404s on this account's plan tier) don't work — `nano-banana-2` does (200 + successful poll to `completed` with a real output URL), so switched the tracer route to use it
+- Ran a standalone Node script exercising the exact same request/poll logic against the live API with the real `MUAPI_API_KEY` — confirmed full submit → poll → completed → output URL flow works end-to-end
+- `pnpm --filter @workspace/web run typecheck` → 0 errors; `pnpm --filter @workspace/web run lint` → 0 warnings/errors
+- Restarted the `web` workflow; confirmed no regressions (tracer page still requires Clerk sign-in as expected — couldn't complete a full authenticated browser run without test credentials, but the underlying API call, which was the reported bug, is verified fixed)
+
+**Anything the reviewer should know:**
+- The account's API key is on the free/sandbox tier (`x-sandbox-key: true`, `plan: free`) — generations return mock data instantly rather than real renders. This doesn't affect the fix (same contract applies to paid keys) but means the tracer's output image is a stock placeholder, not an actual AI-generated product photo, until the key is upgraded.
+- `flux-dev`/`flux-schnell` are listed in Muapi's public model catalog but 404 for this account — likely gated by plan tier. Worth rechecking model availability if the key is upgraded to a paid plan (a nicer product-photo-suited model may become available).
+
+---
 
 ### 2026-07-04 — DEV-8: Muapi integration proof (product photo → cost → R2)
 

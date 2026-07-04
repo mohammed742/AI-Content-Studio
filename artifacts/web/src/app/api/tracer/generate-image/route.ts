@@ -12,7 +12,12 @@ import { muapiService } from "@/lib/muapi";
 import { r2Service } from "@/lib/r2";
 import { tracerBusinessProfile } from "@/lib/tracer-data";
 
-const PRODUCT_PHOTO_MODEL = "ai-product-photography";
+// Muapi has no dedicated "product photo" model. flux-dev/flux-schnell are
+// listed in the catalog but return 404 on this account's plan tier, so we
+// use nano-banana-2 — a general-purpose text-to-image model confirmed
+// available on this API key. See https://muapi.ai/docs/models for the full
+// catalog; run `GET /api/v1/models` to check live per-account availability.
+const PRODUCT_PHOTO_MODEL = "nano-banana-2";
 
 export async function POST() {
   const { userId } = await auth();
