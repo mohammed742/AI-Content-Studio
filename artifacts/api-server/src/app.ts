@@ -52,6 +52,6 @@ app.use(
   })),
 );
 
-app.use("/api", router);
+app.use("/internal-api", router);
 
 export default app;
