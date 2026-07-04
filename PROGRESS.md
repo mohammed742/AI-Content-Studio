@@ -6,14 +6,14 @@
 
 - **Active phase**: Phase 1 — Business Onboarding
 - **Active plan file**: `plan-phase-1.md`
-- **Current sub-task**: DEV-9 (Business Profile schema + CRUD API) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
-- **Next action**: Await review/approval on DEV-9, then STU-9 (multi-step onboarding wizard UI)
-- **UI work**: no
-- **Blockers**: Pre-existing bug found (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
+- **Current sub-task**: DEV-10 (Multi-step onboarding wizard UI) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
+- **Next action**: Await review/approval on DEV-10, then pick next Todo issue with all blockers Done
+- **UI work**: yes (DESIGN.md consulted)
+- **Blockers**: Pre-existing bug (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
 - **Files modified this session**:
-  - `artifacts/web/src/db/schema.ts` (added `business_profiles` table — businessName, businessType enum, products jsonb, targetCustomers, brandColors jsonb, brandTone enum, logoUrl, socialPlatforms jsonb, industry, website, createdAt/updatedAt; unique FK to `users.id`; `insertBusinessProfileSchema`/`updateBusinessProfileSchema` Zod schemas)
-  - `artifacts/web/src/app/api/business-profile/route.ts` (new — GET/POST/PATCH, Clerk-auth-gated, resolves Clerk ID → local `users` row, Zod-validates bodies, one profile per user)
-  - Ran `pnpm db:push` to apply the new table to the Neon database
+  - `artifacts/web/src/components/onboarding/` (new — `onboarding-data.ts`, `onboarding-wizard.tsx`, `step-business-type.tsx`, `step-products.tsx`, `step-customers.tsx`, `step-brand.tsx`, `step-platforms.tsx`, `step-review.tsx`)
+  - `artifacts/web/src/app/dashboard/onboarding/page.tsx` (new — renders the wizard)
+  - `artifacts/web/src/components/ui/input.tsx`, `textarea.tsx`, `label.tsx` (new shadcn primitives, created manually — CLI timed out; installed `@radix-ui/react-label`)
 
 ## Cross-session decisions
 
@@ -33,10 +33,31 @@
 - DEV-8: External API cost metering (parsing per-call cost from response headers), server-side asset persistence (download-then-upload to object storage instead of trusting a third-party URL to stay alive), path-based service routing (why two backend services can't claim the same URL prefix)
 - DEV-13: Structured output (constraining an LLM to return a validated shape instead of parsing free text), pipeline chaining (composing independent AI calls into one user-facing flow), unit economics (per-call cost tracking across multiple paid services)
 - DEV-9: Data ownership at the database level (foreign keys + auth-derived queries instead of client-supplied IDs), validation at the edge (rejecting malformed input before it reaches business logic/DB)
+- DEV-10: Single source of truth for multi-step forms (parent-owned state surviving navigation), two-layer validation (client UX checks + server safety checks), graceful conflict recovery (409 → route the user forward instead of erroring)
 
 ---
 
 ## Session log
+
+### 2026-07-04 — DEV-10: Multi-step onboarding wizard UI
+
+**Done:**
+- Built the six-step onboarding wizard at `/dashboard/onboarding` (task path; note DESIGN.md §9.3 describes full-screen `/onboarding` — flagged in the Linear comment for the reviewer to decide)
+- Components in `src/components/onboarding/`: `onboarding-wizard.tsx` (orchestrator — single form state object, progress bar + "Step X of 6", framer-motion slide transitions, Back/Next, per-step validation gating with toasts, submit → POST `/api/business-profile` → success toast → redirect `/dashboard`), plus one component per step and `onboarding-data.ts` (options/types/initial state)
+- Step 1: business name input + business type card grid; Step 2: dynamic product list (add/remove, name + optional description); Step 3: target customers textarea; Step 4: brand tone cards with preview captions + color picker (max 6, hex); Step 5: platform toggle cards (YouTube/TikTok/Instagram); Step 6: review with per-section Edit buttons that jump back to the step
+- API error handling parses both string errors and Zod `fieldErrors` objects into readable toasts; 409 (profile already exists) shows an info toast and redirects to `/dashboard` instead of erroring
+- Created `input.tsx`/`textarea.tsx`/`label.tsx` shadcn primitives manually (CLI timed out); installed `@radix-ui/react-label`
+- Architect code review run — fixed all 3 findings (fieldErrors parsing, 409 UX branch, color-picker keyboard accessibility: visible focusable button now triggers the hidden color input)
+- `pnpm --filter @workspace/web run typecheck` → 0 errors; lint → 0 warnings/errors; `pnpm --filter @workspace/web run build` → success, `/dashboard/onboarding` in route list
+- Verified route is auth-protected (unauthenticated browser request → 307 to sign-in); no signed-in browser run possible (no test Clerk credentials)
+- Linear: DEV-10 moved Backlog → In Progress, completion comment posted (5-section format); left In Progress — no "Needs Review" status (known gap)
+
+**Anything the reviewer should know:**
+- Dashboard EmptyState CTA still links to `/onboarding` (from DEV-6), which doesn't match this slice's `/dashboard/onboarding` path — not changed (would be a drive-by edit outside the task); decide path question first
+- Logo upload + auto color detection is a separate slice (STU-10), intentionally skipped
+- Products/customers/colors/platforms optional client-side (API requires only name/type/tone); review step shows "not set" placeholders
+
+---
 
 ### 2026-07-04 — DEV-9: Business Profile schema + CRUD API
 
@@ -112,123 +133,3 @@
 - Muapi's actual response schema wasn't verified against official docs this session; the client tries several fallback keys (`output`/`url`/`image_url`/`imageUrl`) for the image URL. Worth confirming against real API docs/responses in a follow-up slice if the live call doesn't return the shape expected.
 
 ---
-
-### 2026-07-04 — DEV-7: Hardcoded business profile + tracer page shell
-
-**Done:**
-- Added `MUAPI_API_KEY`, `OPENAI_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` to the Zod env schema in `src/env.ts`
-- Requested/confirmed all 6 secrets in Replit Secrets (only `MUAPI_API_KEY` was missing; user provided it)
-- Created `src/lib/tracer-data.ts`: hardcoded Business Profile fixture for "Sunrise Café" (bakery, playful tone, 3 brand colors, 3 sample products)
-- Created `/dashboard/tracer` page: profile summary card, "Run Tracer" button (local state only, no pipeline call yet), empty Results card
-- `pnpm --filter @workspace/web run typecheck` → 0 new errors from this slice's files (1 pre-existing unrelated error remains, see Blockers)
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- Verified `/dashboard/tracer` correctly redirects unauthenticated users to sign-in
-- Linear: DEV-7 moved Backlog → In Progress, completion comment posted (5-section format); could not move to "Needs Review" — status doesn't exist in this team's workflow
-
-**Found (not fixed, out of scope):**
-- `src/app/layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which was never added to the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is what's defined). Breaks full-repo `pnpm typecheck`. Introduced in an earlier commit, unrelated to this slice.
-
----
-
-### 2026-06-20 — DEV-6: Authenticated dashboard shell (sidebar + header + empty state)
-
-**Done:**
-- Created dashboard route group at `/app/dashboard/` with `layout.tsx`, `page.tsx`, `error.tsx`
-- Created `DashboardShell` component with fixed sidebar + main content area, per DESIGN.md §9.4
-- Created `Sidebar` component: 5 nav items (Dashboard, Content Plan, Calendar, Gallery, Settings), collapsible (280px↔64px), tooltips on collapsed icons, user avatar + email at bottom, sign-out button
-- Created `Header` component: sticky top bar, mobile hamburger menu (Sheet), page title, breadcrumbs
-- Created `EmptyState` component: centered card with Sparkle icon, welcome message, CTA to `/onboarding`
-- Created `error.tsx` boundary: "Try again" reset + "Go to Dashboard" fallback
-- Mobile responsive: sidebar hidden on <1024px, hamburger opens Sheet-based sidebar
-- Added `dynamic: "force-dynamic"` to dashboard layout and root layout to prevent Clerk static-prerender failures
-- Added `lucide-react` and `class-variance-authority` dependencies (missing from shadcn/ui setup)
-- `pnpm --filter @workspace/web run typecheck` → 0 errors
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- `NEXT_PHASE=phase-production-build npx next build --no-lint` → completed (9 routes, all dynamic)
-- Unauthenticated `/dashboard` → correctly redirects to Clerk sign-in
-- Linear: DEV-6 completion comment posted (all 6 sections); moved → Needs Review
-
----
-
-### 2026-06-20 — DEV-5: Landing page (3-section MVP + SEO + legal pages)
-
-**Done:**
-- Created landing page at `/` with 3 sections:
-  - Hero: split-screen layout (headline + CTA left, product preview mockup right)
-  - Feature Showcase: 4 feature cards (Product Photos, Social Graphics, UGC Videos, Auto Calendar)
-  - Final CTA: gradient background with "Ready to transform your social media?"
-- Created sticky nav bar with mobile hamburger menu, SignUpButton with fallbackRedirectUrl
-- Created footer with Product + Legal links
-- Created `/privacy` and `/terms` placeholder pages with Zinc+Emerald styling
-- Updated `layout.tsx` with comprehensive SEO: title, description, OG tags, Twitter card, metadataBase, robots
-- Created `/opengraph-image.tsx` (edge runtime, dynamic 1200x630 PNG)
-- Added JSON-LD SoftwareApplication schema on landing page
-- Updated `env.ts` to skip validation during build phase (NEXT_PHASE check)
-- `pnpm --filter @workspace/web run typecheck` → 0 errors
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- Screenshot verification: landing page, privacy, terms all render correctly
-- Linear: DEV-5 completion comment posted (all 6 sections)
-
----
-
-### 2026-06-20 — DEV-4: Clerk webhook → create user record in DB
-
-**Done:**
-- Created `src/app/api/webhooks/clerk/route.ts` with POST handler
-  - Verifies svix signature using `CLERK_WEBHOOK_SECRET` to prevent spoofed payloads
-  - Handles `user.created` → inserts new row into `users` table (with duplicate-check)
-  - Handles `user.updated` → updates existing row in `users` table
-  - Returns 400 for missing svix headers or invalid signature, 200 on success
-- Updated `src/env.ts` to validate `CLERK_WEBHOOK_SECRET` with Zod
-- Updated `src/middleware.ts` to bypass Clerk auth for `/api/webhooks(.*)` routes
-- Installed `svix` v1.96.0 as runtime dependency
-- `pnpm --filter @workspace/web run typecheck` → 0 errors
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- Linear: DEV-4 completion comment posted (all 6 sections); moved → Needs Review
-
----
-
-### 2026-06-20 — DEV-2: Clerk auth integration (sign-in, sign-up, middleware, protected routes)
-
-**Done:**
-- Added ClerkProvider wrapper in `src/app/layout.tsx` (children inside html body)
-- Created `src/middleware.ts` with clerkMiddleware + createRouteMatcher protecting `/dashboard(.*)`
-- Created `/sign-in/[[...sign-in]]/page.tsx` with Clerk SignIn component (Zinc/Emerald dark theme)
-- Created `/sign-up/[[...sign-up]]/page.tsx` with Clerk SignUp component (matching dark theme)
-- Updated `src/env.ts` with NEXT_PUBLIC_CLERK_SIGN_IN_URL and NEXT_PUBLIC_CLERK_SIGN_UP_URL (defaults to /sign-in and /sign-up)
-- `pnpm --filter @workspace/web run typecheck` → 0 errors
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- Linear: DEV-2 completion comment posted (all 5 sections); moved → Needs Review
-
----
-
-### 2026-06-20 — DEV-1: Drizzle ORM + Neon schema push (users table)
-
-**Done:**
-- Created `src/db/schema.ts` with `users` table (id/cuid, clerkId unique, email, name, imageUrl, role enum, createdAt/updatedAt)
-- Created `src/db/index.ts` with Drizzle client using `@neondatabase/serverless` (Neon HTTP driver)
-- Created `drizzle.config.ts` for Drizzle Kit schema push
-- Updated `src/env.ts` to validate `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` with Zod
-- Added `db:push` and `db:studio` scripts to `package.json`
-- Created `.eslintrc.json` to resolve missing ESLint config from scaffold
-- Used hand-written Zod insert schema instead of `drizzle-zod` (peer dependency mismatch with Zod v3)
-- Full workspace `pnpm run typecheck` → 0 errors
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- Did NOT run `db:push` (no DATABASE_URL in env yet)
-- Linear: DEV-1 completion comment posted (all 6 sections); moved → Needs Review
-
----
-
-### 2026-06-19 — DEV-3: Scaffold Next.js 15 + Tailwind + shadcn/ui
-
-**Done:**
-- Created `artifacts/web/` via `createArtifact` (react-vite bootstrap) + replaced artifact.toml for Next.js on port 22333
-- Next.js 15.5, TypeScript strict, Tailwind CSS 3, shadcn/ui (Zinc base, Emerald `--primary`, dark mode)
-- Geist Sans + Geist Mono via `geist` npm package; Sonner Toaster in layout
-- `src/env.ts` minimal Zod schema; expands in DEV-1/DEV-2/DEV-4
-- All Phase 0 deps installed: `@clerk/nextjs`, `@neondatabase/serverless`, `drizzle-orm`, `geist`, `framer-motion`, `sonner`, `zod`, etc.
-- `allowedDevOrigins` set in `next.config.ts` for Replit proxy
-- Full workspace typecheck → 0 errors (all 4 packages)
-- Dev server running; GET / 200; dark Zinc/Emerald theme confirmed in screenshot
-- Linear: DEV-3 approach comment + completion comment posted; moved → Needs Review
-- **Portfolio checkpoint**: `phase-0: scaffold Next.js 15 + Tailwind + shadcn/ui`
