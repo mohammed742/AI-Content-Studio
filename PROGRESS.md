@@ -4,17 +4,22 @@
 
 ## Current status
 
-- **Active phase**: Phase 0.5 — Tracer Bullet
-- **Active plan file**: `plan-phase-0-5.md`
-- **Current sub-task**: DEV-13 (GPT caption proof — generate caption conditioned on business profile) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status).
-- **Next action**: Await review/approval on DEV-13, then next tracer slice
-- **UI work**: yes
+- **Active phase**: Phase 1 — Business Onboarding
+- **Active plan file**: `plan-phase-1.md`
+- **Current sub-task**: DEV-9 (Business Profile schema + CRUD API) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
+- **Next action**: Await review/approval on DEV-9, then STU-9 (multi-step onboarding wizard UI)
+- **UI work**: no
 - **Blockers**: Pre-existing bug found (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
 - **Files modified this session**:
-  - `artifacts/web/src/lib/openai.ts` (new — `generateCaption(business, imageDescription)` using Vercel AI SDK's `generateObject` with `@ai-sdk/openai`'s `gpt-4.1-mini`, structured-output schema for `{ caption, hashtags }`, cost computed from token usage × published per-token pricing)
-  - `artifacts/web/src/app/api/tracer/generate-caption/route.ts` (new — auth-gated POST route, validates body with Zod, calls `generateCaption` against the hardcoded tracer Business Profile, responds `{ data: { caption, hashtags, cost, duration }, error: null }`)
-  - `artifacts/web/src/app/dashboard/tracer/page.tsx` (updated — "Run Tracer" now chains `/api/tracer/generate-image` → `/api/tracer/generate-caption`, renders caption + hashtags next to the image, and shows a Muapi/OpenAI/total cost + duration breakdown)
-  - `artifacts/web/package.json` (added `ai` and `@ai-sdk/openai` dependencies — not in the workspace catalog)
+  - `artifacts/web/src/db/schema.ts` (added `business_profiles` table — businessName, businessType enum, products jsonb, targetCustomers, brandColors jsonb, brandTone enum, logoUrl, socialPlatforms jsonb, industry, website, createdAt/updatedAt; unique FK to `users.id`; `insertBusinessProfileSchema`/`updateBusinessProfileSchema` Zod schemas)
+  - `artifacts/web/src/app/api/business-profile/route.ts` (new — GET/POST/PATCH, Clerk-auth-gated, resolves Clerk ID → local `users` row, Zod-validates bodies, one profile per user)
+  - Ran `pnpm db:push` to apply the new table to the Neon database
+
+## Cross-session decisions
+
+- **DEV-9 field list deviated from `plan-phase-1.md`'s STU-8 spec** — task description (used as source of truth) added `industry`/`website` and brand tone enum `professional/friendly/playful/luxury/bold`; the plan file instead had `businessEvents`/`region` (needed later for the Seasonal Calendar feature, CONTEXT.md) and brand tone `professional/casual/playful/luxury`. `businessEvents`/`region` are NOT yet in the schema — add in a follow-up slice if the Seasonal Calendar still needs them.
+- `businessType` enum values (not specified in the DEV-9 task) sourced from CONTEXT.md's existing "Business Type" definition: `restaurant | e-commerce | salon | gym | real_estate | fashion | freelancer | other`.
+- One `business_profiles` row per user enforced via a unique constraint on `user_id`.
 
 ## Concepts Introduced (cumulative)
 
@@ -27,10 +32,28 @@
 - DEV-7: Fail-fast configuration for third-party services (Muapi, OpenAI, R2), building against a hardcoded fixture ahead of real onboarding/DB data
 - DEV-8: External API cost metering (parsing per-call cost from response headers), server-side asset persistence (download-then-upload to object storage instead of trusting a third-party URL to stay alive), path-based service routing (why two backend services can't claim the same URL prefix)
 - DEV-13: Structured output (constraining an LLM to return a validated shape instead of parsing free text), pipeline chaining (composing independent AI calls into one user-facing flow), unit economics (per-call cost tracking across multiple paid services)
+- DEV-9: Data ownership at the database level (foreign keys + auth-derived queries instead of client-supplied IDs), validation at the edge (rejecting malformed input before it reaches business logic/DB)
 
 ---
 
 ## Session log
+
+### 2026-07-04 — DEV-9: Business Profile schema + CRUD API
+
+**Done:**
+- Added `business_profiles` table to `src/db/schema.ts`: `businessName`, `businessType` (enum: restaurant/e-commerce/salon/gym/real_estate/fashion/freelancer/other, sourced from CONTEXT.md's "Business Type" since the task didn't specify values), `products` (jsonb array of `{name, description?, price?}`), `targetCustomers`, `brandColors` (jsonb array of hex strings), `brandTone` (enum: professional/friendly/playful/luxury/bold), `logoUrl`, `socialPlatforms` (jsonb array), `industry`, `website`, `createdAt`/`updatedAt` — `userId` is a unique FK to `users.id` (one profile per user)
+- Added `insertBusinessProfileSchema`/`updateBusinessProfileSchema` (Zod) — hex color regex, URL validation, enum constraints; update schema is a `.partial()` of the insert schema
+- Created `src/app/api/business-profile/route.ts` — GET (fetch caller's profile), POST (create, 409 if one already exists), PATCH (partial update); all three resolve the Clerk-authenticated `userId` to the local `users` row (via `clerkId`) before touching `business_profiles`, since the FK points at the internal user ID
+- `pnpm --filter @workspace/web run typecheck` → 0 errors; `pnpm --filter @workspace/web run lint` → 0 warnings/errors
+- Ran `pnpm db:push` against the real Neon database — schema applied cleanly
+- Verified via curl that GET/POST/PATCH on `/api/business-profile` all return 401 when signed out
+- Linear: DEV-9 moved Backlog → In Progress, completion comment posted (5-section format); left In Progress — team workflow has no "Needs Review" status (same known gap as prior slices)
+
+**Anything the reviewer should know:**
+- Field list deviates from `plan-phase-1.md`'s STU-8 spec (see "Cross-session decisions" above) — followed the task description as source of truth. `businessEvents`/`region` (used by the Seasonal Calendar feature) are not yet in the schema.
+- Pre-existing `layout.tsx`/`CLERK_PUBLISHABLE_KEY` env bug (noted in DEV-7/8/13) still unresolved, unrelated to this slice.
+
+---
 
 ### 2026-07-04 — DEV-13: GPT caption proof (generate caption conditioned on business profile)
 
