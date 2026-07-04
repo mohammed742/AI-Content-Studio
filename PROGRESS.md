@@ -6,20 +6,15 @@
 
 - **Active phase**: Phase 0.5 — Tracer Bullet
 - **Active plan file**: `plan-phase-0-5.md`
-- **Current sub-task**: DEV-8 (Muapi integration proof — generate product photo, parse cost, save to R2) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status). Post-completion bugfix applied this session: real Muapi API contract (was guessed) — see fix log below.
-- **Next action**: Await review/approval on DEV-8, then next tracer slice (real Agent Loop wiring beyond the proof-of-concept)
+- **Current sub-task**: DEV-13 (GPT caption proof — generate caption conditioned on business profile) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status).
+- **Next action**: Await review/approval on DEV-13, then next tracer slice
 - **UI work**: yes
 - **Blockers**: Pre-existing bug found (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
-- **Files modified this session (fix)**:
-  - `artifacts/web/src/lib/muapi.ts` (rewritten — real Muapi contract: `x-api-key` header, `POST /api/v1/{model}` submit-then-poll against `GET /api/v1/predictions/{request_id}/result`, cost from `X-MuAPI-Cost-USD` header/body)
-  - `artifacts/web/src/app/api/tracer/generate-image/route.ts` (model slug changed from invalid `ai-product-photography` to `nano-banana-2`, the only confirmed-available text-to-image model on this account's key)
-- **Files modified in original DEV-8 session**:
-  - `artifacts/web/src/lib/r2.ts` (new — `R2Service.upload` via `@aws-sdk/client-s3` against the R2 S3-compatible endpoint)
-  - `artifacts/web/src/env.ts` (updated — added `R2_PUBLIC_URL` to Zod schema)
-  - `artifacts/web/src/app/dashboard/tracer/page.tsx` (updated — "Run Tracer" now calls the route and renders image/cost/duration/error states)
-  - `artifacts/api-server/.replit-artifact/artifact.toml` (updated — moved API Server's proxy path/previewPath from `/api` to `/internal-api`; it was an unused health-check stub colliding with the web app's own `/api/*` routes)
-  - `artifacts/api-server/src/app.ts` (updated — router mount moved from `/api` to `/internal-api` to match)
-  - `lib/api-spec/orval.config.ts` (updated — codegen `baseUrl` moved from `/api` to `/internal-api`; ran codegen to regenerate the unused generated client)
+- **Files modified this session**:
+  - `artifacts/web/src/lib/openai.ts` (new — `generateCaption(business, imageDescription)` using Vercel AI SDK's `generateObject` with `@ai-sdk/openai`'s `gpt-4.1-mini`, structured-output schema for `{ caption, hashtags }`, cost computed from token usage × published per-token pricing)
+  - `artifacts/web/src/app/api/tracer/generate-caption/route.ts` (new — auth-gated POST route, validates body with Zod, calls `generateCaption` against the hardcoded tracer Business Profile, responds `{ data: { caption, hashtags, cost, duration }, error: null }`)
+  - `artifacts/web/src/app/dashboard/tracer/page.tsx` (updated — "Run Tracer" now chains `/api/tracer/generate-image` → `/api/tracer/generate-caption`, renders caption + hashtags next to the image, and shows a Muapi/OpenAI/total cost + duration breakdown)
+  - `artifacts/web/package.json` (added `ai` and `@ai-sdk/openai` dependencies — not in the workspace catalog)
 
 ## Concepts Introduced (cumulative)
 
@@ -31,10 +26,29 @@
 - DEV-6: Route Group Isolation (dashboard-only layouts), Dynamic Rendering for Auth-Dependent Pages, CSS-Only Transitions for Collapsible UI
 - DEV-7: Fail-fast configuration for third-party services (Muapi, OpenAI, R2), building against a hardcoded fixture ahead of real onboarding/DB data
 - DEV-8: External API cost metering (parsing per-call cost from response headers), server-side asset persistence (download-then-upload to object storage instead of trusting a third-party URL to stay alive), path-based service routing (why two backend services can't claim the same URL prefix)
+- DEV-13: Structured output (constraining an LLM to return a validated shape instead of parsing free text), pipeline chaining (composing independent AI calls into one user-facing flow), unit economics (per-call cost tracking across multiple paid services)
 
 ---
 
 ## Session log
+
+### 2026-07-04 — DEV-13: GPT caption proof (generate caption conditioned on business profile)
+
+**Done:**
+- Installed `ai` and `@ai-sdk/openai` (Vercel AI SDK) — not in the workspace pnpm catalog, added directly to `artifacts/web/package.json` dependencies
+- Created `src/lib/openai.ts` — `generateCaption(business, imageDescription)` calls `generateObject` (Vercel AI SDK) against `gpt-4.1-mini` with a Zod schema constraining output to `{ caption, hashtags }`, conditioned on the Business Profile's name/type/description/target customers/brand tone plus a description of the generated image; cost computed from `usage.inputTokens`/`usage.outputTokens` × GPT-4.1-mini's published per-token pricing ($0.40/1M in, $1.60/1M out), since the AI SDK doesn't return a dollar figure directly
+- Created `src/app/api/tracer/generate-caption/route.ts` — auth-gated POST route (mirrors `generate-image/route.ts`'s pattern), validates the request body with Zod, calls `generateCaption` against the hardcoded tracer Business Profile, responds `{ data: { caption, hashtags, cost, duration }, error: null }`
+- Updated the tracer page: "Run Tracer" now chains `/api/tracer/generate-image` → `/api/tracer/generate-caption` (passing a description built from the same product used for the image prompt), renders the caption and hashtag chips alongside the generated image, and shows a Cost Breakdown section (Muapi cost, OpenAI cost, total cost, total duration)
+- `pnpm --filter @workspace/web run typecheck` → 0 errors; `pnpm --filter @workspace/web run lint` → 0 warnings/errors
+- Restarted the `web` workflow; confirmed no regressions via logs and a preview screenshot — tracer page still requires Clerk sign-in as expected (no test credentials available to exercise the full authenticated chain in-browser, but both routes compile, typecheck, and follow the same verified pattern as the working `generate-image` route)
+- Linear: DEV-13 moved Backlog → In Progress, completion comment posted (5-section format); left In Progress — team workflow has no "Needs Review" status (same known gap as DEV-7/DEV-8)
+
+**Anything the reviewer should know:**
+- Used the project's existing direct-OpenAI-API-key pattern (already required in the env schema since DEV-7, consistent with replit.md's stated stack: "OpenAI GPT-4.1-mini (Vercel AI SDK)") rather than switching to the Replit AI Integrations OpenAI proxy — this keeps a single OpenAI credential/billing path for the project instead of introducing a second one.
+- Per-token pricing is hardcoded as a constant with a comment citing OpenAI's published rates as of this slice; if pricing changes, update `INPUT_COST_PER_TOKEN`/`OUTPUT_COST_PER_TOKEN` in `src/lib/openai.ts`.
+- Could not complete a full authenticated end-to-end browser run (no test Clerk credentials in this environment) — verified via typecheck, lint, and static review that the caption route mirrors the already-verified `generate-image` route's auth/error/response conventions.
+
+---
 
 ### 2026-07-04 — DEV-8 fix: real Muapi API contract (live 404 bug)
 

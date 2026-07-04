@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio --config ./drizzle.config.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.7",
     "@aws-sdk/client-s3": "^3.1079.0",
     "@clerk/nextjs": "^6.20.0",
     "@neondatabase/serverless": "^0.10.4",
@@ -22,6 +23,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "ai": "^7.0.14",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "drizzle-orm": "catalog:",

@@ -1,3 +1,5 @@
 - [Linear workflow gap](linear-workflow-gap.md) — this project's Linear team has no "Needs Review" status, despite replit.md's session protocol requiring it.
 - [Artifact /api path collision](artifact-api-path-collision.md) — a scaffolded API Server artifact can silently claim /api at the proxy, swallowing a Next.js app's own /api/* routes.
 - [Muapi.ai API contract](muapi-api-contract.md) — x-api-key auth, submit-then-poll flow, model-in-URL-path; verify model availability per-account, not just docs.
+- [Linear MCP saveIssue status field](linear-mcp-saveissue.md) — use `state: "In Progress"` (a name), not `status`/`stateId`, when updating issue status via mcpLinearMCP_saveIssue.
+- [AI SDK v7 token usage fields](ai-sdk-usage-tokens.md) — `usage.inputTokens`/`usage.outputTokens` (not promptTokens/completionTokens), both optional — guard with `?? 0`.
