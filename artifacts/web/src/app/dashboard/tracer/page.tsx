@@ -13,20 +13,51 @@ import {
 import { tracerBusinessProfile } from "@/lib/tracer-data";
 
 /**
- * DEV-7: Agent Loop tracer page shell.
+ * DEV-7/DEV-8: Agent Loop tracer page.
  *
- * This is a placeholder shell — "Run Tracer" doesn't invoke the Agent
- * Loop yet. It exists so the next slice can wire the button into the
- * real Plan → Retrieve → Route → Execute → Assemble → Publish pipeline
- * against the hardcoded Business Profile below.
+ * "Run Tracer" calls `/api/tracer/generate-image`, which exercises the
+ * Execute (Muapi) and Assemble (R2 upload) steps of the Agent Loop against
+ * the hardcoded Business Profile below. Results (image, cost, duration)
+ * render in the Results card.
  */
+
+interface TracerResult {
+  r2Url: string;
+  cost: number;
+  duration: number;
+}
+
+interface TracerApiResponse {
+  data: TracerResult | null;
+  error: string | null;
+}
+
 export default function TracerPage() {
   const [isRunning, setIsRunning] = useState(false);
+  const [result, setResult] = useState<TracerResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRunTracer = () => {
+  const handleRunTracer = async () => {
     setIsRunning(true);
-    // TODO(DEV-8+): invoke the Agent Loop and stream results here.
-    setTimeout(() => setIsRunning(false), 600);
+    setError(null);
+    setResult(null);
+
+    try {
+      const response = await fetch("/api/tracer/generate-image", {
+        method: "POST",
+      });
+      const body = (await response.json()) as TracerApiResponse;
+
+      if (!response.ok || body.error || !body.data) {
+        throw new Error(body.error ?? `Request failed (${response.status})`);
+      }
+
+      setResult(body.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   return (
@@ -114,9 +145,60 @@ export default function TracerPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-            No results yet — run the tracer to see output.
-          </div>
+          {isRunning && (
+            <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+              Generating product photo, uploading to R2...
+            </div>
+          )}
+
+          {!isRunning && error && (
+            <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-md border border-destructive/50 bg-destructive/5 p-4 text-center text-sm text-destructive">
+              <p className="font-medium">Tracer run failed</p>
+              <p className="text-destructive/80">{error}</p>
+            </div>
+          )}
+
+          {!isRunning && !error && result && (
+            <div className="flex flex-col gap-4 sm:flex-row">
+              {/* eslint-disable-next-line @next/next/no-img-element -- R2 domain is env-driven, not known at build time */}
+              <img
+                src={result.r2Url}
+                alt="Generated product photo"
+                className="h-48 w-48 rounded-md border object-cover"
+              />
+              <dl className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Cost</dt>
+                  <dd className="font-medium">${result.cost.toFixed(4)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Duration</dt>
+                  <dd className="font-medium">
+                    {(result.duration / 1000).toFixed(1)}s
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">R2 URL</dt>
+                  <dd className="break-all font-medium">
+                    <a
+                      href={result.r2Url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {result.r2Url}
+                    </a>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
+
+          {!isRunning && !error && !result && (
+            <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+              No results yet — run the tracer to see output.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

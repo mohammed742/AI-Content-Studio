@@ -8,6 +8,7 @@
  *   DEV-4  — CLERK_WEBHOOK_SECRET
  *   DEV-7  — MUAPI_API_KEY, OPENAI_API_KEY, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
  *            R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+ *   DEV-8  — R2_PUBLIC_URL
  *
  * Note: CLERK_PUBLISHABLE_KEY is validated server-side and passed explicitly
  * to ClerkProvider as a prop — this avoids relying on NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -46,6 +47,10 @@ const envSchema = z.object({
     .string()
     .min(1, "R2_SECRET_ACCESS_KEY is required"),
   R2_BUCKET_NAME: z.string().min(1, "R2_BUCKET_NAME is required"),
+  R2_PUBLIC_URL: z
+    .string()
+    .min(1, "R2_PUBLIC_URL is required")
+    .transform((v) => v.replace(/\/$/, "")),
 });
 
 const parsed = envSchema.safeParse(process.env);
