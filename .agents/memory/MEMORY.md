@@ -1,0 +1,1 @@
+- [Linear workflow gap](linear-workflow-gap.md) — this project's Linear team has no "Needs Review" status, despite replit.md's session protocol requiring it.

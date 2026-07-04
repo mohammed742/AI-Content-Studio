@@ -4,20 +4,16 @@
 
 ## Current status
 
-- **Active phase**: Phase 0 — Scaffold + Auth + DB
-- **Active plan file**: `plan-phase-0.md`
-- **Current sub-task**: Task-3 (sign-in/sign-up end-to-end) → Done
-- **Next action**: Phase 1 readiness review / pick next Linear issue
+- **Active phase**: Phase 0.5 — Tracer Bullet
+- **Active plan file**: `plan-phase-0-5.md`
+- **Current sub-task**: DEV-7 (hardcoded business profile + tracer page shell) → Needs Review (awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status)
+- **Next action**: Await review/approval on DEV-7, then wire the tracer button into the real Agent Loop (next slice)
 - **UI work**: yes
-- **Blockers**: None
+- **Blockers**: Pre-existing bug found (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
 - **Files modified this session**:
-  - `artifacts/web/src/app/sign-in/[[...sign-in]]/page.tsx` (updated — fixed deprecated appearance vars, added routing props)
-  - `artifacts/web/src/app/sign-up/[[...sign-up]]/page.tsx` (updated — fixed deprecated appearance vars, added routing props)
-  - `artifacts/web/src/app/layout.tsx` (updated — signInFallbackRedirectUrl/signUpFallbackRedirectUrl, signInUrl/signUpUrl)
-  - `artifacts/web/src/middleware.ts` (updated — redirect authenticated users from sign-in/up to /dashboard)
-  - `artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts` (new — Clerk FAPI proxy)
-  - `artifacts/api-server/src/app.ts` (updated — mounted clerkProxyMiddleware + clerkMiddleware)
-  - `artifacts/web/package.json` (updated — added `lucide-react`, `class-variance-authority`)
+  - `artifacts/web/src/env.ts` (updated — added `MUAPI_API_KEY`, `OPENAI_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` to Zod schema)
+  - `artifacts/web/src/lib/tracer-data.ts` (new — hardcoded "Sunrise Café" Business Profile fixture)
+  - `artifacts/web/src/app/dashboard/tracer/page.tsx` (new — tracer page shell: profile card, "Run Tracer" button, empty Results card)
 
 ## Concepts Introduced (cumulative)
 
@@ -27,10 +23,28 @@
 - DEV-4: Webhook signature verification (svix), idempotent writes (duplicate-safe DB operations), middleware bypass (whitelist pattern for server-to-server routes)
 - DEV-5: Progressive Enhancement (Server Components + Client Components), SEO as Infrastructure (metadata exports, OG images, structured data), Component Locality (splitting pages into focused sections)
 - DEV-6: Route Group Isolation (dashboard-only layouts), Dynamic Rendering for Auth-Dependent Pages, CSS-Only Transitions for Collapsible UI
+- DEV-7: Fail-fast configuration for third-party services (Muapi, OpenAI, R2), building against a hardcoded fixture ahead of real onboarding/DB data
 
 ---
 
 ## Session log
+
+### 2026-07-04 — DEV-7: Hardcoded business profile + tracer page shell
+
+**Done:**
+- Added `MUAPI_API_KEY`, `OPENAI_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` to the Zod env schema in `src/env.ts`
+- Requested/confirmed all 6 secrets in Replit Secrets (only `MUAPI_API_KEY` was missing; user provided it)
+- Created `src/lib/tracer-data.ts`: hardcoded Business Profile fixture for "Sunrise Café" (bakery, playful tone, 3 brand colors, 3 sample products)
+- Created `/dashboard/tracer` page: profile summary card, "Run Tracer" button (local state only, no pipeline call yet), empty Results card
+- `pnpm --filter @workspace/web run typecheck` → 0 new errors from this slice's files (1 pre-existing unrelated error remains, see Blockers)
+- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
+- Verified `/dashboard/tracer` correctly redirects unauthenticated users to sign-in
+- Linear: DEV-7 moved Backlog → In Progress, completion comment posted (5-section format); could not move to "Needs Review" — status doesn't exist in this team's workflow
+
+**Found (not fixed, out of scope):**
+- `src/app/layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which was never added to the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is what's defined). Breaks full-repo `pnpm typecheck`. Introduced in an earlier commit, unrelated to this slice.
+
+---
 
 ### 2026-06-20 — DEV-6: Authenticated dashboard shell (sidebar + header + empty state)
 
