@@ -27,6 +27,7 @@ export class R2Service {
     key: string,
     buffer: Buffer,
     contentType: string,
+    options?: { contentDisposition?: string },
   ): Promise<string> {
     await this.client.send(
       new PutObjectCommand({
@@ -34,6 +35,9 @@ export class R2Service {
         Key: key,
         Body: buffer,
         ContentType: contentType,
+        ...(options?.contentDisposition
+          ? { ContentDisposition: options.contentDisposition }
+          : {}),
       }),
     );
 

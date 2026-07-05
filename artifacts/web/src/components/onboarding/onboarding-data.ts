@@ -148,6 +148,7 @@ export interface OnboardingFormState {
   brandTone: InsertBusinessProfile["brandTone"] | null;
   brandColors: string[];
   socialPlatforms: string[];
+  logoUrl: string | null;
 }
 
 export const INITIAL_FORM_STATE: OnboardingFormState = {
@@ -158,6 +159,7 @@ export const INITIAL_FORM_STATE: OnboardingFormState = {
   brandTone: null,
   brandColors: [],
   socialPlatforms: [],
+  logoUrl: null,
 };
 
 export const TOTAL_STEPS = 6;

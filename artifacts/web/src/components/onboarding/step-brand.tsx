@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef } from "react";
-import { Plus, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ImagePlus, Loader2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { extractDominantColors } from "@/lib/extract-colors";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -11,14 +13,22 @@ import {
 } from "./onboarding-data";
 
 const MAX_BRAND_COLORS = 6;
+const ACCEPTED_LOGO_TYPES = "image/png,image/jpeg,image/jpg,image/svg+xml";
+const MAX_LOGO_BYTES = 5 * 1024 * 1024; // matches /api/upload/logo
 
 interface StepBrandProps {
   form: OnboardingFormState;
-  onChange: (patch: Partial<OnboardingFormState>) => void;
+  onChange: (
+    patch:
+      | Partial<OnboardingFormState>
+      | ((prev: OnboardingFormState) => Partial<OnboardingFormState>),
+  ) => void;
 }
 
 export function StepBrand({ form, onChange }: StepBrandProps) {
   const colorInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   const addColor = (color: string) => {
     const normalized = color.toLowerCase();
@@ -31,8 +41,158 @@ export function StepBrand({ form, onChange }: StepBrandProps) {
     onChange({ brandColors: form.brandColors.filter((c) => c !== color) });
   };
 
+  const handleLogoFile = async (file: File) => {
+    if (!ACCEPTED_LOGO_TYPES.split(",").includes(file.type)) {
+      toast.error("Logo must be a PNG, JPG, or SVG image");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error("Logo must be 5 MB or smaller");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Color extraction is local and independent of the upload — if it
+      // fails (e.g. an unusual SVG), the upload still proceeds.
+      const colorPromise = extractDominantColors(file, MAX_BRAND_COLORS).catch(
+        () => null,
+      );
+
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/upload/logo", { method: "POST", body });
+      const json = (await res.json()) as {
+        data: { url: string } | null;
+        error: unknown;
+      };
+      if (!res.ok || !json.data) {
+        throw new Error(
+          typeof json.error === "string"
+            ? json.error
+            : "Upload failed. Please try again.",
+        );
+      }
+
+      const logoUrl = json.data.url;
+      const extracted = await colorPromise;
+
+      // Merge against the LATEST form state (functional update) so any
+      // colors the user added/removed while the upload was in flight
+      // are preserved instead of being overwritten.
+      onChange((prev) => {
+        if (!extracted || extracted.length === 0) {
+          return { logoUrl };
+        }
+        const merged = [...prev.brandColors];
+        for (const color of extracted) {
+          if (merged.length >= MAX_BRAND_COLORS) break;
+          if (!merged.includes(color)) merged.push(color);
+        }
+        return { logoUrl, brandColors: merged };
+      });
+
+      if (extracted && extracted.length > 0) {
+        toast.success(
+          `Logo uploaded — found ${extracted.length} brand color${extracted.length === 1 ? "" : "s"}. Adjust them below.`,
+        );
+      } else {
+        toast.success(
+          "Logo uploaded. We couldn't detect colors automatically — add them below.",
+        );
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong";
+      toast.error(`Couldn't upload your logo: ${message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-8">
+      <div className="space-y-3">
+        <Label>Logo</Label>
+        <p className="max-w-[65ch] text-sm leading-relaxed text-zinc-400">
+          Upload your logo (PNG, JPG, or SVG — max 5 MB). We&apos;ll pull your
+          brand colors from it automatically.
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_LOGO_TYPES}
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleLogoFile(file);
+          }}
+        />
+        <div className="flex items-center gap-4">
+          {form.logoUrl ? (
+            <div className="group relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={form.logoUrl}
+                alt="Uploaded logo"
+                className="h-20 w-20 rounded-xl border border-zinc-800 bg-zinc-900/50 object-contain p-2"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute -right-2 -top-2 h-6 w-6 rounded-full border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-red-400"
+                aria-label="Remove logo"
+                onClick={() => onChange({ logoUrl: null })}
+              >
+                <X strokeWidth={1.5} className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-20 w-full max-w-xs rounded-xl border-dashed"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? (
+                <>
+                  <Loader2
+                    strokeWidth={1.5}
+                    className="h-4 w-4 animate-spin"
+                  />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <ImagePlus strokeWidth={1.5} className="h-4 w-4" />
+                  Upload logo
+                </>
+              )}
+            </Button>
+          )}
+          {form.logoUrl && (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? (
+                <Loader2 strokeWidth={1.5} className="h-4 w-4 animate-spin" />
+              ) : (
+                "Replace"
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-3">
         <Label>Brand tone</Label>
         <p className="max-w-[65ch] text-sm leading-relaxed text-zinc-400">
@@ -74,9 +234,9 @@ export function StepBrand({ form, onChange }: StepBrandProps) {
       <div className="space-y-3">
         <Label>Brand colors</Label>
         <p className="max-w-[65ch] text-sm leading-relaxed text-zinc-400">
-          Pick up to {MAX_BRAND_COLORS} colors used in your branding. Optional
-          — you can add these later. (Logo upload with automatic color
-          detection is coming soon.)
+          Up to {MAX_BRAND_COLORS} colors used in your branding. Colors
+          detected from your logo appear here — remove any that don&apos;t
+          fit, or add your own.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           {form.brandColors.map((color) => (

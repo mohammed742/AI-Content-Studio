@@ -6,14 +6,15 @@
 
 - **Active phase**: Phase 1 — Business Onboarding
 - **Active plan file**: `plan-phase-1.md`
-- **Current sub-task**: DEV-10 (Multi-step onboarding wizard UI) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
-- **Next action**: Await review/approval on DEV-10, then pick next Todo issue with all blockers Done
+- **Current sub-task**: DEV-11 (Logo upload → auto-detect brand colors) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
+- **Next action**: Await review/approval on DEV-11, then pick next Todo issue with all blockers Done
 - **UI work**: yes (DESIGN.md consulted)
 - **Blockers**: Pre-existing bug (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
 - **Files modified this session**:
-  - `artifacts/web/src/components/onboarding/` (new — `onboarding-data.ts`, `onboarding-wizard.tsx`, `step-business-type.tsx`, `step-products.tsx`, `step-customers.tsx`, `step-brand.tsx`, `step-platforms.tsx`, `step-review.tsx`)
-  - `artifacts/web/src/app/dashboard/onboarding/page.tsx` (new — renders the wizard)
-  - `artifacts/web/src/components/ui/input.tsx`, `textarea.tsx`, `label.tsx` (new shadcn primitives, created manually — CLI timed out; installed `@radix-ui/react-label`)
+  - `artifacts/web/src/app/api/upload/logo/route.ts` (new — auth-gated multipart upload → R2, magic-byte + SVG active-content validation)
+  - `artifacts/web/src/lib/extract-colors.ts` (new — client-side canvas dominant-color extraction, no external package)
+  - `artifacts/web/src/lib/r2.ts` (upload now accepts optional `contentDisposition`)
+  - `artifacts/web/src/components/onboarding/step-brand.tsx` (logo upload UI + auto color merge), `step-review.tsx` (logo thumbnail), `onboarding-wizard.tsx` (functional patchForm + logoUrl in payload), `onboarding-data.ts` (logoUrl in form state)
 
 ## Cross-session decisions
 
@@ -34,10 +35,29 @@
 - DEV-13: Structured output (constraining an LLM to return a validated shape instead of parsing free text), pipeline chaining (composing independent AI calls into one user-facing flow), unit economics (per-call cost tracking across multiple paid services)
 - DEV-9: Data ownership at the database level (foreign keys + auth-derived queries instead of client-supplied IDs), validation at the edge (rejecting malformed input before it reaches business logic/DB)
 - DEV-10: Single source of truth for multi-step forms (parent-owned state surviving navigation), two-layer validation (client UX checks + server safety checks), graceful conflict recovery (409 → route the user forward instead of erroring)
+- DEV-11: Content-based file validation (magic bytes over client-claimed MIME), SVG-as-active-content risk (sanitize + Content-Disposition: attachment), functional state updates (merging async results against latest state, not captured state), client-side pixel analysis (canvas getImageData color quantization)
 
 ---
 
 ## Session log
+
+### 2026-07-05 — DEV-11: Logo upload → auto-detect brand colors
+
+**Done:**
+- New `POST /api/upload/logo` — Clerk-auth-gated, multipart, PNG/JPG/SVG, 5 MB cap; verifies file content matches the claimed type (PNG/JPEG magic bytes; SVG must contain `<svg` and no scripts/event handlers/foreignObject/etc.); uploads to R2 under `logos/{clerkId}/{ts}.{ext}`; SVGs stored with `Content-Disposition: attachment` so direct navigation downloads instead of rendering (XSS defense); `{data:{url}}` 201
+- New `src/lib/extract-colors.ts` — `extractDominantColors(file, maxColors)`: 100px offscreen canvas, `getImageData`, 32-step RGB quantization buckets with running average, skips alpha<128 pixels, dedupes by RGB distance 60; handles SVGs without intrinsic dimensions
+- Step 4 UI: upload/replace/remove logo with preview, uploading spinner, detected colors auto-merged into brandColors (max 6, deduped, existing kept); extraction failure never blocks the upload (info toast instead)
+- `logoUrl` added to wizard form state and included in the `/api/business-profile` POST payload; review step shows the logo thumbnail (plain `<img>` — R2 domain not in next/image allowlist)
+- Architect review: 3 findings, all fixed — (1) stale-state race: color merge now applied via functional update against latest form state (`patchForm` accepts updater functions), (2) SVG active-content rejection + attachment disposition, (3) magic-byte validation instead of trusting client MIME
+- `pnpm --filter @workspace/web run typecheck` → 0 errors; lint → 0 warnings/errors; curl `/api/upload/logo` signed out → 401
+- Linear: DEV-11 moved to In Progress with approach note, completion comment posted (5-section format); left In Progress — no "Needs Review" status
+
+**Anything the reviewer should know:**
+- Replacing/removing a logo doesn't delete the old R2 object (orphans accumulate — tech debt if it matters)
+- No test runner exists in the web package yet, so no automated route tests this slice
+- Dashboard EmptyState `/onboarding` link mismatch (from DEV-6) still unfixed — out of scope again
+
+---
 
 ### 2026-07-04 — DEV-10: Multi-step onboarding wizard UI
 
@@ -111,25 +131,5 @@
 **Anything the reviewer should know:**
 - The account's API key is on the free/sandbox tier (`x-sandbox-key: true`, `plan: free`) — generations return mock data instantly rather than real renders. This doesn't affect the fix (same contract applies to paid keys) but means the tracer's output image is a stock placeholder, not an actual AI-generated product photo, until the key is upgraded.
 - `flux-dev`/`flux-schnell` are listed in Muapi's public model catalog but 404 for this account — likely gated by plan tier. Worth rechecking model availability if the key is upgraded to a paid plan (a nicer product-photo-suited model may become available).
-
----
-
-### 2026-07-04 — DEV-8: Muapi integration proof (product photo → cost → R2)
-
-**Done:**
-- Created `src/lib/muapi.ts` — `MuapiService.generate(model, params)` posts to Muapi's generate endpoint with Bearer auth, parses `X-MuAPI-Cost-USD` from the response headers, returns `{ imageUrl, cost, model }`
-- Created `src/lib/r2.ts` — `R2Service.upload(key, buffer, contentType)` using `@aws-sdk/client-s3` against R2's S3-compatible endpoint, returns the public URL
-- Added `R2_PUBLIC_URL` to the Zod env schema
-- Created `src/app/api/tracer/generate-image/route.ts` — auth-gated POST route: builds a prompt from the hardcoded fixture's first product → calls Muapi → downloads the returned image → uploads it to R2 → responds `{ data: { r2Url, cost, duration }, error: null }`
-- Wired the tracer page's "Run Tracer" button to call the route and render the resulting image, cost, and duration, with an error state
-- `pnpm --filter @workspace/web run typecheck` → 0 new errors from this slice's files (same 1 pre-existing unrelated error, see Blockers)
-- `pnpm --filter @workspace/web run lint` → 0 warnings, 0 errors
-- **Found and fixed a routing collision**: a separate, already-registered "API Server" artifact (an unused Express stub with only a health check) had claimed the entire `/api` path prefix at the shared proxy, silently swallowing every `/api/*` route in the Next.js app. Flagged to the user, got explicit approval, then moved the API Server's path to `/internal-api` (`artifact.toml`, its Express mount, and the orval codegen `baseUrl`) and reran codegen. Verified via curl that `/api/tracer/generate-image` now correctly reaches the Next.js route (401 when signed out, as expected) and `/internal-api/healthz` still serves the API Server.
-- Full workspace `pnpm run typecheck` re-run after the routing fix — `api-server`, `mockup-sandbox`, and `scripts` all pass clean; `web` has only the same pre-existing unrelated error
-- Linear: DEV-8 moved Backlog → In Progress, completion comment posted (5-section format); could not move to "Needs Review" — status doesn't exist in this team's workflow (same known gap as DEV-7)
-
-**Found (not fixed, out of scope):**
-- `src/app/layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, still not added to the env schema — same pre-existing bug noted in DEV-7, unrelated to this slice.
-- Muapi's actual response schema wasn't verified against official docs this session; the client tries several fallback keys (`output`/`url`/`image_url`/`imageUrl`) for the image URL. Worth confirming against real API docs/responses in a follow-up slice if the live call doesn't return the shape expected.
 
 ---

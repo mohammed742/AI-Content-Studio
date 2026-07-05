@@ -57,8 +57,15 @@ export function OnboardingWizard() {
   const [form, setForm] = useState<OnboardingFormState>(INITIAL_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
 
-  const patchForm = (patch: Partial<OnboardingFormState>) => {
-    setForm((prev) => ({ ...prev, ...patch }));
+  const patchForm = (
+    patch:
+      | Partial<OnboardingFormState>
+      | ((prev: OnboardingFormState) => Partial<OnboardingFormState>),
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      ...(typeof patch === "function" ? patch(prev) : patch),
+    }));
   };
 
   const goTo = (next: number) => {
@@ -114,6 +121,7 @@ export function OnboardingWizard() {
         brandColors: form.brandColors,
         brandTone: form.brandTone,
         socialPlatforms: form.socialPlatforms,
+        ...(form.logoUrl ? { logoUrl: form.logoUrl } : {}),
       };
 
       const res = await fetch("/api/business-profile", {

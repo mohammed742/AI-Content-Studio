@@ -109,6 +109,16 @@ export function StepReview({ form, onEditStep }: StepReviewProps) {
       </ReviewSection>
 
       <ReviewSection title="Brand Identity" step={4} onEditStep={onEditStep}>
+        {form.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={form.logoUrl}
+            alt="Business logo"
+            className="h-14 w-14 rounded-lg border border-zinc-800 bg-zinc-900/50 object-contain p-1.5"
+          />
+        ) : (
+          <Missing label="No logo uploaded" />
+        )}
         <p className="text-sm text-zinc-300">
           Tone: {brandTone ? brandTone.label : "Not selected"}
         </p>
