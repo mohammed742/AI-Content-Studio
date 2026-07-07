@@ -6,6 +6,8 @@
  * authenticated Clerk user and resolves that Clerk user to our local
  * `users` row before reading/writing `business_profiles`, since
  * `business_profiles.user_id` references `users.id`, not the Clerk ID.
+ * The row is created just-in-time if the Clerk webhook hasn't synced it
+ * yet (see src/lib/local-user.ts).
  */
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
@@ -15,17 +17,8 @@ import {
   businessProfiles,
   insertBusinessProfileSchema,
   updateBusinessProfileSchema,
-  users,
 } from "@/db/schema";
-
-async function getLocalUser(clerkId: string) {
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1);
-  return user ?? null;
-}
+import { ensureLocalUser } from "@/lib/local-user";
 
 export async function GET() {
   const { userId: clerkId } = await auth();
@@ -37,7 +30,7 @@ export async function GET() {
     );
   }
 
-  const user = await getLocalUser(clerkId);
+  const user = await ensureLocalUser(clerkId);
   if (!user) {
     return NextResponse.json(
       { data: null, error: "User not found" },
@@ -71,7 +64,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = await getLocalUser(clerkId);
+  const user = await ensureLocalUser(clerkId);
   if (!user) {
     return NextResponse.json(
       { data: null, error: "User not found" },
@@ -128,7 +121,7 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const user = await getLocalUser(clerkId);
+  const user = await ensureLocalUser(clerkId);
   if (!user) {
     return NextResponse.json(
       { data: null, error: "User not found" },

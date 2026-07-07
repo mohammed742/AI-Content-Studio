@@ -84,6 +84,10 @@ export const businessProfiles = pgTable("business_profiles", {
     .default([]),
   industry: text("industry"),
   website: text("website"),
+  // DEV-12: which Industry Template (CONTEXT.md) seeded this profile during
+  // onboarding. Nullable — profiles created directly via the API (not the
+  // wizard) have no preset. Phase 2 content suggestions build on it.
+  industryPreset: text("industry_preset", { enum: BUSINESS_TYPES }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -108,6 +112,7 @@ export const insertBusinessProfileSchema = z.object({
   socialPlatforms: z.array(z.string().min(1)).default([]),
   industry: z.string().optional(),
   website: z.string().url().optional(),
+  industryPreset: z.enum(BUSINESS_TYPES).optional(),
 });
 
 export const updateBusinessProfileSchema =

@@ -13,7 +13,7 @@
 ## Files to touch
 ```
 src/db/schema.ts (business_profiles table), src/app/api/business-profile/,
-src/app/(dashboard)/onboarding/, src/components/onboarding/,
+src/app/onboarding/ (full-screen per DESIGN.md §9.3 — human decision 2026-07-05), src/components/onboarding/,
 src/lib/brand-colors.ts, src/lib/industry-templates.ts
 ```
 

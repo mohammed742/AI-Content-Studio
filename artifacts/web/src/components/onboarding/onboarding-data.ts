@@ -149,6 +149,8 @@ export interface OnboardingFormState {
   brandColors: string[];
   socialPlatforms: string[];
   logoUrl: string | null;
+  /** Which Industry Template seeded this profile (DEV-12), for persistence. */
+  industryPreset: InsertBusinessProfile["businessType"] | null;
 }
 
 export const INITIAL_FORM_STATE: OnboardingFormState = {
@@ -160,6 +162,7 @@ export const INITIAL_FORM_STATE: OnboardingFormState = {
   brandColors: [],
   socialPlatforms: [],
   logoUrl: null,
+  industryPreset: null,
 };
 
 export const TOTAL_STEPS = 6;

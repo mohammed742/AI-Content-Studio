@@ -6,15 +6,31 @@
 
 - **Active phase**: Phase 1 — Business Onboarding
 - **Active plan file**: `plan-phase-1.md`
-- **Current sub-task**: DEV-11 (Logo upload → auto-detect brand colors) → awaiting human review; Linear left In Progress — team workflow has no "Needs Review" status.
-- **Next action**: Await review/approval on DEV-11, then pick next Todo issue with all blockers Done
+- **Current sub-task**: DEV-14 (Dashboard summary card) + DEV-10 §9.3 polish (dots/skip/persona pills) → done this session, awaiting human review. All phase-1 slices now implemented.
+- **Next action**: Await review on DEV-14, DEV-12, DEV-59, DEV-10 (all left In Progress — no "Needs Review" status). Phase 1 is feature-complete; on approval, update README (last-slice-of-phase rule) and pick the next phase. Deferred: DEV-60 (PostHog onboarding events, Phase 8).
 - **UI work**: yes (DESIGN.md consulted)
-- **Blockers**: Pre-existing bug (not fixed, out of scope) — `layout.tsx` reads `env.CLERK_PUBLISHABLE_KEY`, which doesn't exist in the env schema (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is defined instead). Blocks a clean full-repo `pnpm typecheck`.
+- **Blockers**: None. (Long-standing "layout.tsx reads `env.CLERK_PUBLISHABLE_KEY`" blocker verified **stale** during the 2026-07-05 phase-1 audit — the code uses `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` correctly and typecheck passes; removed.)
 - **Files modified this session**:
+  - `artifacts/web/src/lib/local-user.ts` (new — DEV-59 bug fix: `ensureLocalUser` JIT user provisioning when the Clerk webhook hasn't synced)
+  - `artifacts/web/src/app/api/business-profile/route.ts` (DEV-59 — all three handlers use `ensureLocalUser` instead of lookup-only `getLocalUser`)
+  - `artifacts/web/src/app/onboarding/page.tsx` (new — full-screen onboarding per DESIGN.md §9.3, human decision; replaces `src/app/dashboard/onboarding/`, which was deleted)
+  - `artifacts/web/src/middleware.ts` (protected matcher now covers `/onboarding(.*)` in addition to `/dashboard(.*)`)
+  - `artifacts/web/src/app/dashboard/page.tsx` (DEV-14 — now a Server Component: fetches profile, redirects to `/onboarding` if none, else renders greeting + CTA + summary card)
+  - `artifacts/web/src/components/dashboard/business-profile-card.tsx` (new — DEV-14 summary card: logo, name, type, preset badge, tone, color swatches, products, platforms, target customers)
+  - `artifacts/web/src/components/dashboard/empty-state.tsx` (DELETED — dead after the redirect supersedes it)
+  - `artifacts/web/src/components/onboarding/onboarding-wizard.tsx` (DEV-10 §9.3: progress dots replace the bar; "Skip for now" + warning on optional steps 2/3/5)
+  - `artifacts/web/src/components/onboarding/step-customers.tsx` (DEV-10 §9.3: AI-suggested persona pills from the industry preset, click-to-fill)
+  - `artifacts/web/src/lib/industry-templates.ts` (new — `IndustryTemplate` per `businessType` enum value: suggested products, sample target-customer text, recommended tones/platforms, suggested content types (canonical Content Type enum), posting schedule (`postsPerWeek` + weekday→content-type `weeklyPlan`), example hashtags; also `CONTENT_TYPE_LABELS` map for UI — reconciled to plan-phase-1.md step 5)
+  - `artifacts/web/src/components/onboarding/suggested-for-you.tsx` (new — "Suggested for you" panel: recommended tone pill + "filled in for you" note, content-idea pills, posting cadence; framer-motion fade-in, emerald/zinc per DESIGN.md)
+  - `artifacts/web/src/components/onboarding/onboarding-wizard.tsx` (new `handleBusinessTypeSelect` — merges template defaults into empty fields only + always records `industryPreset`; `industryPreset` added to submit payload)
+  - `artifacts/web/src/components/onboarding/step-business-type.tsx` (`onSelectBusinessType` prop replaces direct `onChange({businessType})` call; renders `SuggestedForYou` when a type is selected)
+  - `artifacts/web/src/components/onboarding/onboarding-data.ts` (added `industryPreset` to `OnboardingFormState` + `INITIAL_FORM_STATE`)
+  - `artifacts/web/src/db/schema.ts` (amended DEV-9's `business_profiles`: added nullable `industry_preset` column [enum: BUSINESS_TYPES] + `industryPreset` in insert Zod schema) — pushed to Neon via `db:push`
+- **Files modified in prior session (DEV-11)**:
   - `artifacts/web/src/app/api/upload/logo/route.ts` (new — auth-gated multipart upload → R2, magic-byte + SVG active-content validation)
   - `artifacts/web/src/lib/extract-colors.ts` (new — client-side canvas dominant-color extraction, no external package)
   - `artifacts/web/src/lib/r2.ts` (upload now accepts optional `contentDisposition`)
-  - `artifacts/web/src/components/onboarding/step-brand.tsx` (logo upload UI + auto color merge), `step-review.tsx` (logo thumbnail), `onboarding-wizard.tsx` (functional patchForm + logoUrl in payload), `onboarding-data.ts` (logoUrl in form state)
+  - `artifacts/web/src/components/onboarding/step-brand.tsx` (logo upload UI + auto color merge), `step-review.tsx` (logo thumbnail), `onboarding-data.ts` (logoUrl in form state)
 
 ## Cross-session decisions
 
@@ -36,10 +52,79 @@
 - DEV-9: Data ownership at the database level (foreign keys + auth-derived queries instead of client-supplied IDs), validation at the edge (rejecting malformed input before it reaches business logic/DB)
 - DEV-10: Single source of truth for multi-step forms (parent-owned state surviving navigation), two-layer validation (client UX checks + server safety checks), graceful conflict recovery (409 → route the user forward instead of erroring)
 - DEV-11: Content-based file validation (magic bytes over client-claimed MIME), SVG-as-active-content risk (sanitize + Content-Disposition: attachment), functional state updates (merging async results against latest state, not captured state), client-side pixel analysis (canvas getImageData color quantization)
+- DEV-12: Non-destructive defaults (auto-filling a form only where the user hasn't already typed something, so a preset never clobbers real input), exhaustiveness checking (TypeScript's `Record<enum, T>` forcing every enum value to have a corresponding data entry, catching an incomplete data file at compile time instead of at runtime), data provenance (recording which preset seeded a record so later features can build on the original choice)
+- DEV-59: Just-in-time provisioning (creating a dependent record on first authenticated use instead of trusting an async webhook to have run), webhook-as-primary/JIT-as-fallback sync (eventual consistency between an external auth provider and the local DB), race-safe idempotent insert (`ON CONFLICT DO NOTHING` + re-select against a unique key)
+- DEV-14: Redirect-as-control-flow (a server page deciding whether to render or reroute before any HTML is sent), server-side data fetching (querying the DB in the component instead of a client fetch + loading state), closing the onboarding loop (reflecting a user's own entered data back to them)
 
 ---
 
 ## Session log
+
+### 2026-07-05 — DEV-14 dashboard summary card + DEV-10 §9.3 wizard polish
+
+**Done:**
+- **DEV-14 (Dashboard summary card):** `dashboard/page.tsx` is now a Server Component — fetches the caller's profile (via `ensureLocalUser` + Drizzle), redirects to `/onboarding` when there's none (plan step 8 / audit finding #3), else renders "Welcome back, {name}", a "Coming soon" primary CTA (DESIGN §9.4; generation is Phase 2), and the new `BusinessProfileCard` (logo, name, type, "Started from {preset}" badge, tone, brand-color swatches, products, platforms w/ icons, target customers). This fixes the reported "dashboard shows Welcome instead of business details." Deleted the now-dead `empty-state.tsx`
+- **DEV-10 §9.3 polish (flag 1):** progress **dots** replace the segmented bar + step-counter; **"Skip for now"** + "Skipping reduces generation quality" warning on optional steps (2 Products, 3 Customers, 5 Platforms; not on required 1/4); **persona pills** in the Customers step (industry sample customers, click-to-fill, selected-state)
+- **Deferred:** PostHog onboarding events (4th §9.3 item) — PostHog not wired + plan says Analytics is Phase 8. Filed as DEV-60 (Backlog)
+- `typecheck ✅` · `lint ✅` · browser-verified card + persona pills + dots via temporary probe route (real "Muscle Max" gym data); probe + its middleware exclusion fully reverted (middleware diff = only the `/onboarding` protection)
+- Linear: DEV-14 → In Progress + completion comment (incl. Portfolio Checkpoint); DEV-10 comment for the 3 §9.3 items; DEV-60 created
+
+**Anything the reviewer should know:**
+- DEV-14 scope = plan step-7 card + step-8 redirect only. Rest of DESIGN §9.4 (content status, stats row, recent, quick actions) is Phase 2+ — primary CTA is a disabled placeholder
+- Dashboard couldn't be exercised signed-in in the preview (Clerk handshake); verified the card component in isolation with the real DB profile
+- Phase 1 is now feature-complete → README update due on approval (last-slice-of-phase rule)
+
+---
+
+### 2026-07-05 — Onboarding path decision: full-screen `/onboarding` (DEV-10 rework)
+
+**Done:**
+- Human decision resolving the DEV-10 deviation: onboarding moves to full-screen `/onboarding` per DESIGN.md §9.3 (was `/dashboard/onboarding` inside the dashboard shell)
+- New `src/app/onboarding/page.tsx` (own full-screen container, `force-dynamic`); deleted `src/app/dashboard/onboarding/`; middleware protected matcher extended with `/onboarding(.*)`
+- Side effect: dashboard EmptyState CTA (`/onboarding`, dead link since DEV-6 — audit finding #2) now works with no code change
+- Propagated: plan-phase-1.md files-to-touch updated; decision + QA checklist posted on DEV-10 in Linear
+- `typecheck ✅` · `lint ✅` · signed-out `/onboarding` → sign-in redirect verified on live dev server
+
+**Anything the reviewer should know:**
+- Remaining DESIGN.md §9.3 gaps logged on DEV-10 (progress dots, per-step Skip, persona pills, PostHog events) — not built in this rework
+- Audit finding #3 ("/dashboard with no profile should redirect to /onboarding") still open — belongs to DEV-14, awaiting go-ahead
+
+---
+
+### 2026-07-05 — DEV-59 bug fix: "User not found" on profile save + phase-1 audit
+
+**Done:**
+- **Phase-1 audit** (vs plan-phase-1.md, Linear, code): dashboard summary card (DEV-14/STU-12) never started — `dashboard/page.tsx` hardcodes `<EmptyState />` and never fetches the profile (this is why completed onboarding shows no business details); EmptyState CTA links to nonexistent `/onboarding` (wizard is at `/dashboard/onboarding`); "redirect to onboarding if no profile" (plan step 8) unimplemented; DEV-9/10/11/12 all stuck In Progress in Linear; plan file still says "Not started"; STU-vs-DEV id drift; the `env.CLERK_PUBLISHABLE_KEY` blocker in PROGRESS was verified stale and removed
+- **DEV-59 (new bug issue, Linear):** onboarding submit failed with "Couldn't save your profile: User not found" for accounts signed up locally. Root cause confirmed against live Neon: `users` rows are created only by the Clerk webhook, which only reaches the deployed URL — the affected account (mak5825@gmail.com) had no row; the previously-working profile ("Sunset Cafe") belongs to a different, webhook-synced account
+- Fix: new `src/lib/local-user.ts` → `ensureLocalUser(clerkId)` — JIT-provisions the local `users` row from the Clerk session (`currentUser()`) when missing; idempotent via `ON CONFLICT DO NOTHING` on unique `clerk_id` + re-select (race-safe vs webhook). All three `/api/business-profile` handlers switched to it; webhook remains primary sync path
+- `typecheck ✅` · `lint ✅` · signed-out GET/POST still 401 on the live dev server
+- Linear: DEV-59 created (bug label), completion comment + QA checklist posted; left In Progress (no "Needs Review" status)
+
+**Anything the reviewer should know:**
+- End-to-end confirmation requires a signed-in browser: re-run onboarding with the previously-failing account (QA checklist on DEV-59)
+- Audit follow-ups deliberately NOT done this session (scope discipline): DEV-14 build, `/onboarding` link fix, no-profile redirect — awaiting human direction on the `/onboarding` vs `/dashboard/onboarding` path question first
+
+---
+
+### 2026-07-05 — DEV-12: Industry template engine → presets per business type
+
+**Done:**
+- New `src/lib/industry-templates.ts` — `INDUSTRY_TEMPLATES: Record<businessType, IndustryTemplate>` covering all 8 `businessType` enum values (restaurant, e-commerce, salon, gym, real_estate, fashion, freelancer, other); each entry has `suggestedProducts`, `sampleTargetCustomers`, `recommendedTones`, `recommendedPlatforms`, `suggestedContentTypes`, `postingSchedule`, `exampleHashtags`
+- **Correction (same session):** first pass didn't match plan-phase-1.md step 5 (`businessType → default brandTone, suggested content types, posting schedule`). Replaced the freeform `contentStrategyHints` string with structured `suggestedContentTypes` using CONTEXT.md's canonical Content Type enum (`product_showcase`/`tip`/`behind_the_scenes`/`promo`/`testimonial`/`ugc_ad`/`seasonal`/`engagement`), and added `postingSchedule: { postsPerWeek, weeklyPlan: {day, contentType}[] }` (was missing entirely) — matches CONTEXT.md "Industry Strategy". New `ContentType`/`Weekday`/`PostingSlot`/`PostingSchedule` types exported from the same file.
+- **Expansion (same session):** surfaced the preset as a visible "Suggested for you" panel in Step 1 (recommended tone / content ideas / how often to post; tone auto-applied + editable) via new `suggested-for-you.tsx` + `CONTENT_TYPE_LABELS`. Persisted preset provenance: new nullable `industry_preset` column on `business_profiles` (amends DEV-9 schema), wired through Zod + form state + submit payload, pushed to Neon. Reserved for Phase 2 content suggestions.
+- **Browser-verified** the panel for the first time on an onboarding slice: temporary public probe route + middleware-matcher exclusion → clicked Restaurant → confirmed panel (tone Friendly, 5 content-idea pills, "About 5 posts a week") + screenshot; probe route and middleware change then fully reverted (middleware diff empty)
+- **Env gotcha:** `db:push` needs esbuild's `@esbuild/darwin-x64` binary, which is missing from the install; ran push via locally-fetched binary + `ESBUILD_BINARY_PATH` (nothing committed). A `pnpm install` restoring optional deps would fix permanently. (Tech debt.)
+- Wired Step 1 business-type selection (`onboarding-wizard.tsx`'s new `handleBusinessTypeSelect`, `step-business-type.tsx`'s new `onSelectBusinessType` prop) to auto-fill Steps 2 (products), 3 (target customers), 4 (brand tone), 5 (platforms) from the matching template — only into fields that are still empty/unset, so re-picking a business type never overwrites something the user already typed; confirmation toast shown
+- `contentStrategyHints`/`exampleHashtags` are defined in the data model per the task spec but not consumed by any wizard step yet (no corresponding UI field) — reserved for Phase 2 content generation
+- `pnpm --filter @workspace/web run typecheck` → 0 errors (the `Record<businessType, ...>` type forced templates for all 8 enum values, including `fashion`/`freelancer` which aren't in the wizard's `BUSINESS_TYPE_OPTIONS` UI list); lint → 0 warnings/errors
+- Could not run an authenticated browser check (same limitation as DEV-9/10/11/13 — no test Clerk credentials, sandbox has no network path to Clerk's hosted sign-in); verified the merge logic by code review against `OnboardingFormState`'s exact shape and the existing functional-update pattern from DEV-11's logo color merge
+- Linear: DEV-12 moved Backlog → In Progress, completion comment posted (5-section format); left In Progress — no "Needs Review" status
+
+**Anything the reviewer should know:**
+- `BUSINESS_TYPE_OPTIONS` (the actual wizard UI) only exposes 6 of the 8 `businessType` values — no cards for `fashion`/`freelancer`. Templates for those two exist for schema/type completeness but are currently unreachable from the UI. Out of scope to add UI cards for them here.
+- No new API routes — pure client-side data + wiring, per the task.
+
+---
 
 ### 2026-07-05 — DEV-11: Logo upload → auto-detect brand colors
 

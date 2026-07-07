@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { INDUSTRY_TEMPLATES } from "@/lib/industry-templates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -22,6 +23,7 @@ import {
   TOTAL_STEPS,
   type OnboardingFormState,
 } from "./onboarding-data";
+import type { InsertBusinessProfile } from "@/db/schema";
 import { StepBusinessType } from "./step-business-type";
 import { StepProducts } from "./step-products";
 import { StepCustomers } from "./step-customers";
@@ -66,6 +68,41 @@ export function OnboardingWizard() {
       ...prev,
       ...(typeof patch === "function" ? patch(prev) : patch),
     }));
+  };
+
+  // DEV-12: When a business type is picked, fill in Steps 2-5 with the
+  // matching Industry Template — but only for fields the user hasn't
+  // already touched, so a later change never clobbers their input.
+  const handleBusinessTypeSelect = (
+    businessType: InsertBusinessProfile["businessType"],
+  ) => {
+    patchForm((prev) => {
+      const template = INDUSTRY_TEMPLATES[businessType];
+      // Always record which preset seeded this profile, even if the user has
+      // already customized fields — this is the provenance note (DEV-12).
+      const patch: Partial<OnboardingFormState> = {
+        businessType,
+        industryPreset: businessType,
+      };
+
+      const productsEmpty = prev.products.every(
+        (p) => !p.name.trim() && !p.description.trim(),
+      );
+      if (productsEmpty) {
+        patch.products = template.suggestedProducts.map((p) => ({ ...p }));
+      }
+      if (!prev.targetCustomers.trim()) {
+        patch.targetCustomers = template.sampleTargetCustomers[0];
+      }
+      if (!prev.brandTone) {
+        patch.brandTone = template.recommendedTones[0];
+      }
+      if (prev.socialPlatforms.length === 0) {
+        patch.socialPlatforms = template.recommendedPlatforms;
+      }
+      return patch;
+    });
+    toast.info(`Applied suggested defaults for ${businessType.replace("_", " ")} — feel free to change any of them.`);
   };
 
   const goTo = (next: number) => {
@@ -122,6 +159,9 @@ export function OnboardingWizard() {
         brandTone: form.brandTone,
         socialPlatforms: form.socialPlatforms,
         ...(form.logoUrl ? { logoUrl: form.logoUrl } : {}),
+        ...(form.industryPreset
+          ? { industryPreset: form.industryPreset }
+          : {}),
       };
 
       const res = await fetch("/api/business-profile", {
@@ -156,18 +196,18 @@ export function OnboardingWizard() {
   };
 
   const isLastStep = step === TOTAL_STEPS;
+  // Steps whose fields are all optional (Products, Customers, Platforms) can
+  // be skipped and filled later; steps 1 (name/type) and 4 (tone) are
+  // required, so they aren't skippable. (DESIGN.md §9.3.)
+  const isSkippable = step === 2 || step === 3 || step === 5;
 
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="mb-8 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Set up your business
-          </h1>
-          <span className="text-sm text-zinc-500">
-            Step {step} of {TOTAL_STEPS}
-          </span>
-        </div>
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Set up your business
+        </h1>
+        {/* Progress dots (DESIGN.md §9.3 — dots, not numbers) */}
         <div
           className="flex items-center gap-2"
           role="progressbar"
@@ -176,15 +216,24 @@ export function OnboardingWizard() {
           aria-valuenow={step}
           aria-label={`Step ${step} of ${TOTAL_STEPS}`}
         >
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-            <span
-              key={i}
-              className={cn(
-                "h-1.5 flex-1 rounded-full transition-colors",
-                i < step ? "bg-emerald-500" : "bg-zinc-800",
-              )}
-            />
-          ))}
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => {
+            const idx = i + 1;
+            const done = idx < step;
+            const current = idx === step;
+            return (
+              <span
+                key={i}
+                className={cn(
+                  "h-2.5 w-2.5 rounded-full transition-all",
+                  current
+                    ? "scale-110 bg-emerald-500 ring-2 ring-emerald-500/30"
+                    : done
+                      ? "bg-emerald-500"
+                      : "bg-zinc-700",
+                )}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -205,7 +254,11 @@ export function OnboardingWizard() {
               transition={{ duration: 0.2, ease: "easeOut" }}
             >
               {step === 1 && (
-                <StepBusinessType form={form} onChange={patchForm} />
+                <StepBusinessType
+                  form={form}
+                  onChange={patchForm}
+                  onSelectBusinessType={handleBusinessTypeSelect}
+                />
               )}
               {step === 2 && <StepProducts form={form} onChange={patchForm} />}
               {step === 3 && <StepCustomers form={form} onChange={patchForm} />}
@@ -259,6 +312,22 @@ export function OnboardingWizard() {
           </Button>
         )}
       </div>
+
+      {isSkippable && (
+        <div className="mt-3 text-center">
+          <button
+            type="button"
+            onClick={() => goTo(step + 1)}
+            className="text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
+            title="Skipping reduces generation quality"
+          >
+            Skip for now
+          </button>
+          <p className="mt-1 text-xs text-zinc-600">
+            Skipping reduces generation quality.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,17 +3,26 @@
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { InsertBusinessProfile } from "@/db/schema";
 import {
   BUSINESS_TYPE_OPTIONS,
   type OnboardingFormState,
 } from "./onboarding-data";
+import { SuggestedForYou } from "./suggested-for-you";
 
 interface StepBusinessTypeProps {
   form: OnboardingFormState;
   onChange: (patch: Partial<OnboardingFormState>) => void;
+  onSelectBusinessType: (
+    businessType: InsertBusinessProfile["businessType"],
+  ) => void;
 }
 
-export function StepBusinessType({ form, onChange }: StepBusinessTypeProps) {
+export function StepBusinessType({
+  form,
+  onChange,
+  onSelectBusinessType,
+}: StepBusinessTypeProps) {
   return (
     <div className="space-y-8">
       <div className="space-y-2">
@@ -40,7 +49,7 @@ export function StepBusinessType({ form, onChange }: StepBusinessTypeProps) {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => onChange({ businessType: option.value })}
+                onClick={() => onSelectBusinessType(option.value)}
                 aria-pressed={selected}
                 className={cn(
                   "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all",
@@ -66,6 +75,10 @@ export function StepBusinessType({ form, onChange }: StepBusinessTypeProps) {
           })}
         </div>
       </div>
+
+      {form.businessType && (
+        <SuggestedForYou businessType={form.businessType} />
+      )}
     </div>
   );
 }
