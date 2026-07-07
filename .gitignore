@@ -27,6 +27,12 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Claude Code local runtime — machine-specific launch config + locks (not portable)
+.claude/scheduled_tasks.lock
+.claude/launch.json
+.claude/run-web.cjs
+.claude/run-web.sh
+
 # misc
 /.sass-cache
 /connect.lock
