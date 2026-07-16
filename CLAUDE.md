@@ -17,6 +17,7 @@ This repository is a vibe‑coded project with a structured human + AI workflow.
 - **Do not start the next phase until the active one is verified.**
 - **Do not silently change direction.** If an assumption in `PLAN.md` turns out wrong, surface it or make the smallest reversible change and log it in `PROGRESS.md` session log.
 - **No drive‑by refactors.** Note unrelated issues under "Tech debt observed" in the session log.
+- **Server Actions, not browser‑called `/api` routes.** Project convention (and on Replit the workspace proxy intercepts `/api/*`, so they silently fail there). Webhooks called by external servers (Clerk, Stripe) are the exception. See `.agents/memory/nextjs-api-routes-blocked.md`.
 - **No `.env.local`, `node_modules`, or generated media commits.**
 - **One checkpoint per completed slice.** Checkpoint title: `phase-N: <verb> <thing>` (e.g., `phase-0: scaffold nextjs + clerk auth`).
 - **Never push to remote.** Agents create Replit checkpoints only. The human reviews all changes and controls version history. This applies in both interactive and AFK modes.

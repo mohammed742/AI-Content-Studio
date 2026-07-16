@@ -16,18 +16,19 @@ src/components/analytics/posthog-provider.tsx,
 src/app/layout.tsx (GA4 script, PostHog provider),
 src/app/api/webhooks/clerk/route.ts (add welcome email),
 sentry.client.config.ts, sentry.server.config.ts, sentry.edge.config.ts,
-src/env.ts (add GA4_ID, POSTHOG_KEY, SENTRY_DSN, BREVO_API_KEY)
+src/env.ts (add NEXT_PUBLIC_GA4_ID, NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_SENTRY_DSN, BREVO_API_KEY)
+(GA4/PostHog/Sentry-client keys need the NEXT_PUBLIC_ prefix — they are read in the browser; BREVO_API_KEY stays server-only)
 ```
 
 ## Steps
 
 ### STU-6b: GA4
-1. Add `GA4_ID` to env validation
+1. Add `NEXT_PUBLIC_GA4_ID` to env validation
 2. `src/lib/analytics.ts` — gtag script in layout, `trackEvent(name, params)` helper
 3. Track: page_view (auto), cta_click (landing page CTAs), signup_start (sign-up page)
 
 ### STU-6c: PostHog
-1. Add `POSTHOG_KEY` to env validation
+1. Add `NEXT_PUBLIC_POSTHOG_KEY` to env validation
 2. `src/components/analytics/posthog-provider.tsx` — PostHog provider component
 3. `usePostHog()` hook, auto-capture enabled
 4. Track: feature_used, generation_started, generation_completed, onboarding_completed, plan_upgraded

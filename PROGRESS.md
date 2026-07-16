@@ -4,11 +4,97 @@
 
 ## Current status
 
-- **Active phase**: Phase 1 — Business Onboarding
-- **Active plan file**: `plan-phase-1.md`
-- **Current sub-task**: DEV-14 (Dashboard summary card) + DEV-10 §9.3 polish (dots/skip/persona pills) → done this session, awaiting human review. All phase-1 slices now implemented.
-- **Next action**: Await review on DEV-14, DEV-12, DEV-59, DEV-10 (all left In Progress — no "Needs Review" status). Phase 1 is feature-complete; on approval, update README (last-slice-of-phase rule) and pick the next phase. Deferred: DEV-60 (PostHog onboarding events, Phase 8).
-- **UI work**: yes (DESIGN.md consulted)
+- **Active phase**: Phase 2 — Visual Generation Core (Phase 1 complete & approved 2026-07-08).
+- **Active plan file**: `plan-phase-2.md`.
+- **Active phase**: **Phase 2 — Visual Generation Core → COMPLETE** (all 13 slices built; DEV-24/25/26 In Progress for human review, rest Done). **Next phase: Phase 3 — UGC Video Pipeline** (`plan-phase-3.md`).
+- **Current sub-task**: **DEV-25 (Agent Evals)** — implemented + tested this session (2026-07-14), left **In Progress** for human review. **Final Phase-2 slice.** Built on top of DEV-24/26 while both are still In Progress (human's standing "keep in progress but proceed"). **DEV-15–23 Done; DEV-24/25/26 In Progress (review).**
+- **Next action**: Human: (1) **replace the revoked `OPENAI_API_KEY`** (still 401 — blocks all live E2E of DEV-22/24/25/26), (2) review DEV-24/25/26 and mark Done. Then Phase 3: read `plan-phase-3.md`; first slice **DEV-27 (Script generation — GPT-4.1-mini → 15-sec product review scripts)**. Deferred: DEV-60 (PostHog onboarding events, Phase 8).
+- **UI work**: no this slice (services); README updated (last-slice-of-phase rule)
+- **Phase-2 complete**: Plan (DEV-20) → Retrieve (DEV-16/17) → Route (DEV-18) → Execute (DEV-19/21/22) → Assemble (DEV-23) → UI+Queue (DEV-24) → Gallery (DEV-26) → **Evals/feedback loops (DEV-25)**. The full Agent Loop runs end to end (mock media on free tier / pending OpenAI key).
+- **🔑 BLOCKER — OpenAI key revoked (found 2026-07-13):** `OPENAI_API_KEY` in `artifacts/web/.env.local` returns 401 directly from OpenAI's API (it worked 2026-07-09 for the DEV-17/DEV-20 live smokes). Until replaced: onboarding auto-embedding fails (non-fatal, logged), and the content planner / retrieval / text generation fail at runtime. DEV-22's live smoke was blocked by this — its logic is fully unit-tested and uses the exact `generateObject` pattern verified live in DEV-20. **Human action: issue a new key and update `.env.local`.**
+- **⚠️ Muapi model-availability (DEV-8), shimmed in ONE place:** only `nano-banana-2` works on this free/sandbox key. Workaround: `src/lib/muapi-availability.ts` → `resolveAvailableModel()` (shared by product-photo + social-graphic). TODO-marked — delete on key upgrade. Free-tier generations return mock output at $0.
+- **⚠️ Dev-server cache gotcha (hit 2026-07-13):** running `pnpm build` while the dev server is up corrupts `.next` (vendor-chunk "Cannot find module" errors, e.g. on Clerk routes). Fix: stop server → `rm -rf artifacts/web/.next` → restart. Avoid by stopping the dev server before builds.
+- **Blockers**: None.
+- **DB note (new this session)**: pgvector **enabled on Neon** (`CREATE EXTENSION vector`, v0.8.1) and `brand_embeddings` table created **via direct DDL** (drizzle-kit push needs the stripped esbuild binary — DEV-12 gap). DDL matches drizzle's generated SQL exactly (table/column/index/FK names), so a future `db:push` is a no-op. `schema.ts` remains source of truth.
+- **Test harness note (new this session)**: Vitest is unusable in this workspace (pnpm-workspace overrides strip the native esbuild/rollup binaries it needs — same root cause as the DEV-12 `db:push` esbuild gap). Adopted **Node 24's built-in test runner + native TS type-stripping** instead — zero new deps. `pnpm test` is wired at the web package (`node --test "src/**/*.test.ts"`) and repo root (`pnpm -r ... run test`). Test files: `src/**/*.test.ts`.
+- **Files modified this session (DEV-25)**:
+  - `artifacts/web/src/db/schema.ts` (added `pipeline_logs` table — step/model/durationMs/success/cost/error, step index; `boolean` import) — direct DDL + round-trip on Neon
+  - `artifacts/web/src/lib/pipeline-log.ts` (new — `persistentPipelineLogger`: console + fire-and-forget insert into `pipeline_logs`, lazy db, self-swallowing)
+  - `artifacts/web/src/lib/muapi.ts` · `embeddings.ts` · `retrieval.ts` · `content-planner.ts` · `text-generation.ts` (each: singleton default logger swapped to `persistentPipelineLogger`; removed now-unused inline console loggers)
+  - `artifacts/web/src/lib/agent-evals.ts` (new — pure `scorePlanQuality` (0-100), `aggregateFeedback`/`summarizeInsights`, `aggregateReliability`; `AgentEvalsService.getPerformanceInsights`/`getPipelineReliability` with injectable fetch seams, default lazy Drizzle)
+  - `artifacts/web/src/lib/agent-evals.test.ts` (new — 10 tests: scoring, feedback + reliability aggregation, service composition)
+  - `artifacts/web/src/lib/content-planner.ts` (proposePlan now scores + **auto-regenerates below 60** (max 2 attempts, keep best, returns `score`); `buildPlannerPrompt` injects `performanceInsights`; imports `scorePlanQuality`/`MIN_PLAN_SCORE`)
+  - `artifacts/web/src/lib/content-planner.test.ts` (+4 tests — accept-good / regenerate-and-keep-best / stop-at-cap / insights-in-prompt)
+  - `artifacts/web/src/app/api/plan/route.ts` (POST fetches `getPerformanceInsights` (non-fatal) → passes to proposePlan)
+  - `README.md` (Phase 2 complete — Agent Loop end to end)
+- **Files modified this session (DEV-26)**:
+  - `artifacts/web/src/db/schema.ts` (added `generation_feedback` table — user+kit FKs cascade, `rating` up/down, unique (user, kit) index; `FEEDBACK_RATINGS`/types; also exported `MediaType` from `MEDIA_TYPES`) — direct DDL + upsert/cascade round-trip on Neon
+  - `artifacts/web/src/lib/gallery.ts` (new — pure `parseGalleryQuery`/`pageOffset`/`toggleRating` + `GalleryItem`/`GALLERY_PAGE_SIZE`)
+  - `artifacts/web/src/lib/gallery.test.ts` (new — 6 tests: query defaults/clamp/enum-reject, platform blank, offset, toggle)
+  - `artifacts/web/src/app/api/gallery/route.ts` (new — GET paginated 12/page, type+platform filter, sort, LEFT JOIN feedback rating, lookahead `hasMore`)
+  - `artifacts/web/src/app/api/gallery/feedback/route.ts` (new — POST toggle rating, ownership-scoped, `onConflictDoUpdate`)
+  - `artifacts/web/src/app/api/gallery/[id]/route.ts` (new — PATCH caption, DELETE kit; ownership-scoped)
+  - `artifacts/web/src/app/(dashboard)/gallery/page.tsx` (new — server page → GalleryView, max-w-7xl)
+  - `artifacts/web/src/components/gallery/gallery-view.tsx` (new — filter/sort bar, grid 3/2/1, load-more, empty+skeleton states, optimistic rating, lightbox host)
+  - `artifacts/web/src/components/gallery/gallery-card.tsx` (new — thumbnail + hover overlay: type/platform/date + one-tap thumbs)
+  - `artifacts/web/src/components/gallery/gallery-lightbox.tsx` (new — Dialog: media, editable caption, hashtag pills, prominent thumbs, download, delete)
+  - `artifacts/web/src/components/ui/dialog.tsx` (new — Radix Dialog shadcn primitive for the lightbox)
+  - `artifacts/web/src/middleware.ts` (protected matcher += `/gallery(.*)`)
+  - `artifacts/web/src/components/dashboard/sidebar.tsx` (Gallery link → `/gallery`)
+- **Files modified 2026-07-14 (DEV-24 path decision — `/plan`)**:
+  - `artifacts/web/src/app/(dashboard)/layout.tsx` (new — route group layout reusing `DashboardShell`; future `/gallery`/`/calendar`/`/social` join this group)
+  - `artifacts/web/src/app/(dashboard)/plan/page.tsx` (moved from `src/app/dashboard/plan/page.tsx`; old dir deleted)
+  - `artifacts/web/src/middleware.ts` (protected matcher += `/plan(.*)`)
+  - `artifacts/web/src/components/dashboard/sidebar.tsx` (Content Plan link → `/plan`)
+- **Files modified this session (DEV-24)**:
+  - `artifacts/web/src/db/schema.ts` (added `content_plans` table — user FK, weekStart, status draft/approved/generating/completed, `items` jsonb of `ContentPlanItemRecord` [per-item status pending/generating/completed/failed, assetKitId, mediaUrl, error], totalCost; `CONTENT_PLAN_STATUSES`/`PLAN_ITEM_STATUSES` consts) — applied to Neon via direct DDL + round-trip
+  - `artifacts/web/src/lib/generation-queue.ts` (new — `GenerationQueueService.processPlan`: routes items by content type [product_showcase→photo pipeline w/ `matchProduct`, else→graphic; ugc_ad→graphic until Phase 3], caption → Asset Kit assembly per item, `Promise.allSettled` parallelism + failure isolation, per-item status writes via injectable `ItemUpdater`; retry = re-process pending+failed only)
+  - `artifacts/web/src/lib/generation-queue.test.ts` (new — 6 tests: product matching, routing, completion+cost, failure isolation, retry semantics, no-products fallback)
+  - `artifacts/web/src/app/api/plan/route.ts` (new — GET latest plan; POST propose via DEV-20 planner → draft [replaces prior draft, 409 while generating]; PATCH draft items w/ Zod)
+  - `artifacts/web/src/app/api/plan/approve/route.ts` (new — POST: claim draft/completed → generating → run queue inline → completed + totalCost; failed-item retry via re-approve)
+  - `artifacts/web/src/app/dashboard/plan/page.tsx` (new — server page rendering PlanFlow, max-w-4xl per DESIGN §9.5)
+  - `artifacts/web/src/components/plan/plan-flow.tsx` (new — 3-state client orchestrator: create hero + staged loading, review + optimistic PATCH edits + add-item + sticky approve footer ["N items · Will use N credits"], generating/completed progress w/ 2.5s polling + retry + completion banner; skeleton loading state)
+  - `artifacts/web/src/components/plan/plan-item-card.tsx` (new — review card [type icon/platform badge/day/inline description edit/remove] + progress card [waiting dim, shimmer, thumbnail+View, Failed+Retry]; lucide icons per codebase convention)
+- **Files modified this session (DEV-23)**:
+  - `artifacts/web/src/db/schema.ts` (added `asset_kits` table — user FK cascade, title, `contentType` [new `CONTENT_TYPES` enum const], platform, `mediaUrl` (R2), `mediaType` [`image`/`video`], caption, hashtags jsonb, `cost` double precision, `status` [`draft`/`ready`/`published`], timestamps, user_id index; added `doublePrecision` import) — applied to Neon via direct DDL + round-trip verified
+  - `artifacts/web/src/lib/asset-kit.ts` (new — `AssetKitService.assemble`: download media → R2 upload under `asset-kits/{userId}/{ts}.{ext}` → insert kit row → non-fatal `generation`-kind embed-back of title+caption; injectable download/upload/save/embed seams; `extensionFor` content-type→extension mapping)
+  - `artifacts/web/src/lib/asset-kit.test.ts` (new — 6 tests: extension mapping, assembly order + R2-owned mediaUrl, embed-back content, embed failure non-fatal, download failure fatal, video extension)
+- **Files modified this session (DEV-22)**:
+  - `artifacts/web/src/lib/text-generation.ts` (new — `TextGenerationService`: `generateCaption` (caption + normalized hashtags) and `generateAdCopy` (headline/body/cta), both RAG-conditioned via injectable `CaptionLLM`/`AdCopyLLM`/`TextRetriever` seams; `normalizeHashtags` (strip `#`, dedupe case-insensitively, cap 10); pure `buildCaptionPrompt`/`buildAdCopyPrompt`; GPT-4.1-mini cost from token usage; reuses DEV-15 `PipelineLogger` (steps `execute:caption`/`execute:ad_copy`). DEV-13 tracer `openai.ts` untouched)
+  - `artifacts/web/src/lib/text-generation.test.ts` (new — 6 tests: hashtag normalization, both prompt builders, caption flow w/ retrieval, ad-copy flow, per-op logging, failure propagation)
+- **Files modified this session (DEV-21)**:
+  - `artifacts/web/src/lib/social-graphic.ts` (new — `SocialGraphicService.generate`: RAG retrieve → brand-conditioned prompt (tone/brand colors/audience/content-type) → route `social_graphic` → Muapi at format aspect ratio; `FORMAT_ASPECT_RATIOS` lookup (post 1:1 / story 9:16 / banner 16:9); pure `buildGraphicQuery`/`buildGraphicPrompt`; injectable Muapi/retriever seams)
+  - `artifacts/web/src/lib/social-graphic.test.ts` (new — 6 tests: builders, default+per-format aspect ratio, override→nano-banana-2, RAG context injection, failure propagation)
+  - `artifacts/web/src/lib/muapi-availability.ts` (new — extracted the free-tier `resolveAvailableModel` shim, shared by both generation pipelines; TODO-marked for removal on key upgrade)
+  - `artifacts/web/src/lib/product-photo.ts` (amended — now imports + re-exports `resolveAvailableModel` from the shared module; no behavior change, DEV-19 tests unaffected)
+- **Files modified this session (DEV-19)**:
+  - `artifacts/web/src/lib/product-photo.ts` (new — `ProductPhotoService.generate`: RAG retrieve → optional bg-removal (when `sourceImageUrl`) → scene generation → optional reframe (per aspect ratio), via Model Router + injectable Muapi/retriever seams; aggregates cost + per-step records; pure `buildPhotoQuery`/`buildScenePrompt`; `resolveAvailableModel` free-tier shim mapping intended slugs → `nano-banana-2`, TODO-marked for removal on key upgrade)
+  - `artifacts/web/src/lib/product-photo.test.ts` (new — 6 tests: shim mapping, prompt/query builders, minimal + full pipeline w/ cost aggregation, bg-removal skip, failure propagation)
+- **Files modified this session (DEV-20)**:
+  - `artifacts/web/src/lib/content-planner.ts` (new — `ContentPlannerService.proposePlan`: strategy lookup (reuses DEV-12 `INDUSTRY_TEMPLATES`) + RAG retrieve + upcoming holidays → GPT-4.1-mini `generateObject` → normalize to 5-7 `ContentPlanItem`s; injectable `PlanGenerator`+`PlanRetriever`; pure `buildRetrievalQuery`/`buildPlannerPrompt`/`normalizeItems` exports; `performanceInsights` seam reserved for DEV-25; reuses DEV-15 `PipelineLogger`)
+  - `artifacts/web/src/lib/content-planner.test.ts` (new — 8 tests: query/prompt builders, proposePlan orchestration, item cap/type-filter/platform-snap, success + failure logging)
+  - `artifacts/web/src/lib/seasonal.ts` (new — fixed-date US `HOLIDAYS` + `upcomingHolidays(now, windowDays)` with year rollover; TS-data convention, not the plan's `data/holidays.json`)
+  - `artifacts/web/src/lib/seasonal.test.ts` (new — 5 tests: Valentine's-in-5-days, window exclusion, sorting, rollover, same-day)
+- **Files modified this session (DEV-18)**:
+  - `artifacts/web/src/lib/model-router.ts` (new — Model Router: `AssetType`/`Quality` types, `ROUTING_TABLE: Record<AssetType, {standard, premium?}>` transcribed from ARCHITECTURE.md §Route, `ModelRouter.route`/`getModel` with default-standard + premium-fallback + caller-param merge + unknown-type guard; pure config, no external deps)
+  - `artifacts/web/src/lib/model-router.test.ts` (new — 8 tests: exhaustive resolution, default/premium/fallback, cost values, param merge + override, unknown-type throw)
+  - `CONTEXT.md` (added **Asset Type** + **Quality (Route Tier)** glossary entries; annotated **Model Router** with the impl path)
+- **Files modified this session (DEV-16)**:
+  - `artifacts/web/src/lib/retrieval.ts` (new — Retrieval service: injectable `RetrievalService.retrieve`/`retrieveContext` with `QueryEmbedder`+`VectorSearch` seams, default top-k=8, optional `kind` filter, blank-query short-circuit, `formatRetrievedContext`; default search = Drizzle `cosineDistance` over `brand_embeddings` ordered by distance; default query embedder reuses `openAIEmbedder`; reuses DEV-15 `PipelineLogger`)
+  - `artifacts/web/src/lib/retrieval.test.ts` (new — 7 tests: formatting, top-k default, custom k + kind passthrough, blank-query short-circuit, retrieveContext, success + failure logging)
+  - `artifacts/web/src/lib/embeddings.ts` (amended — exported `defaultEmbedder` as `openAIEmbedder` for reuse by retrieval; no behavior change)
+- **Files modified in prior session (DEV-17)**:
+  - `artifacts/web/src/db/schema.ts` (added `brandEmbeddings` table — `vector(1536)` embedding, `kind` enum, HNSW cosine index, user FK; `EMBEDDING_KINDS`/`EMBEDDING_DIMENSIONS` consts; `BrandEmbedding`/`InsertBrandEmbedding` types; imports `index`/`vector`)
+  - `artifacts/web/src/lib/embeddings.ts` (new — Brand Knowledge Base pipeline: pure `businessProfileToChunks`, injectable `BrandKnowledgeBase.syncBusinessProfile` with `Embedder`+`EmbeddingStore` seams, replace-on-sync, reuses DEV-15 `PipelineLogger` type; default embedder = OpenAI `text-embedding-3-small` via AI SDK `embedMany`, default store = Drizzle delete+insert; all `@/…`/AI-SDK value imports lazy so the module is test-loadable)
+  - `artifacts/web/src/lib/embeddings.test.ts` (new — 6 tests: chunking, blank/absent handling, embed+store replace semantics, cost, success + failure logging)
+  - `artifacts/web/src/app/api/business-profile/route.ts` (non-fatal `syncKnowledgeBase` helper called after POST create + PATCH update; GET untouched)
+  - Live DB: `CREATE EXTENSION vector` + `brand_embeddings` table/index applied to Neon via direct DDL (nothing committed for the DDL — schema.ts is the source of truth)
+- **Files modified in prior session (DEV-15)**:
+  - `artifacts/web/src/lib/muapi.ts` (rewritten — DEV-8's minimal tracer client → full service: injectable `fetch`/`sleep`/clock/apiKey/logger, `fetchWithRetry` with exponential backoff on network err/429/5xx (max 3), `MuapiError` typed errors w/ `status`+`retryable`, cost from `X-MuAPI-Cost-USD` w/ body fallback, injectable `PipelineLogger` hook, generalized return `{ outputs, imageUrl, cost, model, requestId }` — `imageUrl` kept for the tracer; lazy `import("@/env")` so the module is test-loadable without a validated env)
+  - `artifacts/web/src/lib/muapi.test.ts` (new — 12 unit tests: happy path, cost header/body, retry 429/500, no-retry 400, exhaustion, backoff timing, failed status, timeout, empty outputs, success/failure logging)
+  - `artifacts/web/tsconfig.json` (added `allowImportingTsExtensions: true` so the test can import `./muapi.ts`)
+  - `artifacts/web/package.json` (added `test` script)
+  - `package.json` (root — added `test` script: `pnpm -r --if-present run test`)
 - **Blockers**: None. (Long-standing "layout.tsx reads `env.CLERK_PUBLISHABLE_KEY`" blocker verified **stale** during the 2026-07-05 phase-1 audit — the code uses `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` correctly and typecheck passes; removed.)
 - **Files modified this session**:
   - `artifacts/web/src/lib/local-user.ts` (new — DEV-59 bug fix: `ensureLocalUser` JIT user provisioning when the Clerk webhook hasn't synced)
@@ -55,10 +141,319 @@
 - DEV-12: Non-destructive defaults (auto-filling a form only where the user hasn't already typed something, so a preset never clobbers real input), exhaustiveness checking (TypeScript's `Record<enum, T>` forcing every enum value to have a corresponding data entry, catching an incomplete data file at compile time instead of at runtime), data provenance (recording which preset seeded a record so later features can build on the original choice)
 - DEV-59: Just-in-time provisioning (creating a dependent record on first authenticated use instead of trusting an async webhook to have run), webhook-as-primary/JIT-as-fallback sync (eventual consistency between an external auth provider and the local DB), race-safe idempotent insert (`ON CONFLICT DO NOTHING` + re-select against a unique key)
 - DEV-14: Redirect-as-control-flow (a server page deciding whether to render or reroute before any HTML is sent), server-side data fetching (querying the DB in the component instead of a client fetch + loading state), closing the onboarding loop (reflecting a user's own entered data back to them)
+- DEV-15: Retry with exponential backoff (surviving transient third-party failures — network/429/5xx — by waiting progressively longer instead of failing the user on the first hiccup), dependency injection for testability (swapping fetch/sleep/clock/key from outside so retry/backoff/timeout paths test instantly and offline), typed domain errors (a `MuapiError` carrying HTTP status + a `retryable` flag so callers branch on failure kind), environment-agnostic test harness (Node's built-in runner + native TS type-stripping when the toolchain's usual runner can't run in the sandbox)
+- DEV-17: Vector embeddings + semantic memory (representing brand text as 1536-dim vectors so "most relevant to this generation" becomes a distance query instead of stuffing the whole profile into every prompt), pgvector as a first-class column type (storing/indexing vectors in Postgres with an HNSW cosine index for approximate-nearest-neighbour search), replace-on-sync idempotency (re-deriving a user's profile embeddings on every edit instead of accumulating stale chunks, scoped by `kind` so later generation embeddings survive), fault isolation for secondary effects (a non-fatal auto-embedding step that can never fail the primary profile save)
+- DEV-16: Retrieval-augmented generation (fetching only the top-k relevant brand chunks per request instead of injecting the whole profile — cost + relevance scale with data), cosine similarity ranking (ordering stored vectors by angular closeness to a query vector so semantically related text surfaces even with no shared keywords), service composition via reuse (retrieval's query embedder reuses the KB's `openAIEmbedder` so the embedding model + cost stay single-sourced)
+- DEV-18: Configuration over hard-coding (model choices live in one data table, not scattered through pipeline code, so swapping a model or tier is a one-line change), compile-time exhaustiveness (`Record<AssetType, …>` forces a route for every asset type — a missing one fails to build instead of at generation time), infrastructure hiding (model slugs never reach user-facing code — "invisible to users", credits only), graceful capability fallback (premium quality degrades to the standard model when no premium exists rather than erroring)
+- DEV-20: Service composition / orchestration (the planner does little itself — it wires retrieval + industry strategy + LLM together, keeping each part independently testable), trust-but-verify LLM output (a schema constrains shape but not meaning, so structured output is still validated/normalized — item cap, type filter, platform snap — before use), grounding to fight generic output (feeding the model business-specific inputs — industry rhythm, RAG-retrieved brand facts, real upcoming holidays — so proposals are about *this* business and *this* week), forward-compatible seams (an unused `performanceInsights` arg lets DEV-25 wire the feedback loop in without a signature change)
+- DEV-19: Pipeline orchestration with optional stages (a multi-step generation flow where bg-removal/reframe run only when they apply, with per-step cost aggregation), isolating a temporary workaround (a single named `resolveAvailableModel` boundary + TODO contains the free-tier model shim so the rest of the code stays written against the real Model Router — a one-line deletion later), passthrough observability (passing step labels into the Muapi service so each generation self-logs without the pipeline needing its own logger)
+- DEV-21: DRY for a shared invariant (extracting the free-tier model shim to one module the moment a second pipeline needed it — because "which model this key can call" is a single decision that must stay consistent, unlike incidental look-alike code), data-encoded configuration (format→aspect-ratio as a lookup table, not scattered conditionals, so a new format is a one-line change), knowing when NOT to over-share (photo vs graphic keep separate focused services — they share the real machinery but differ for different reasons-to-change)
+- DEV-22: One conditioning pattern, many outputs (captions/ad copy/plans/photos/graphics all follow retrieve → grounded prompt → model → clean up, so brand consistency is structural and improving retrieval improves everything), sanitizing at the boundary (hashtags normalized once in the producing service — strip `#`, dedupe, cap — so every consumer receives one canonical form), distinguishing env failures from code failures (a dead API key verified independently against the provider, so the slice isn't blocked on a phantom bug)
+- DEV-23: Owning your outputs (copying generated media into app-controlled storage at creation time, because vendor URLs make no liveness promise — dead-link galleries destroy trust), ordering side effects by what must not fail (critical path download→store→save completes before the optional embed-back runs, so a soft failure can never lose paid work), closing the learning loop (each completed generation is embedded back into the Brand Knowledge Base, so future plans/captions retrieve what was already made)
+- DEV-24: Status as a state machine (plan + per-item states persisted in the DB so any client renders exact progress from stored truth — survives refresh/crash), optimistic UI with reconciliation (edits/approve update the screen instantly, sync to the server, roll back on rejection; polling reconciles during generation), batch failure isolation (Promise.allSettled + per-item status so one failed generation never sinks the plan, and retry re-runs only what failed), inline-vs-background job trade-off (queue runs inline in the approve request — fine for free-tier/mock latency, flagged as tech debt for real model latency)
+- DEV-26: Lookahead pagination (fetch page-size+1 rows to derive `hasMore` without a second count query on the hot path), optimistic interactions with rollback (thumbs tap updates instantly, reverts on server rejection), idempotent per-user rating (unique (user, kit) + `onConflictDoUpdate` so a re-tap updates one row rather than accumulating), feedback as a first-class learning signal (ratings stored to later bias the planner via the Performance Feedback Loop)
+- DEV-25: Self-evaluation control loop (the agent scores its own plans and auto-regenerates below a threshold — bounded retries — so weak output never ships), the feedback loop closes (aggregated thumbs up/down become a planner prompt hint, so the product compounds in quality with use), observability as data (every pipeline step emits a structured `pipeline_logs` row → reliability/cost are a query, not a guess), safe circular type-imports (muapi ↔ pipeline-log cycle resolved because the back-reference is type-only and erased at runtime)
 
 ---
 
 ## Session log
+
+### 2026-07-16 — QA fix (DEV-24): Generation Queue lost-update race + OpenAI key live
+
+**Done:**
+- **OpenAI key** replaced by human and account funded — live embeddings + GPT plan verified working (was 401 revoked → then 429 no-quota → now 200 + real output). Dev server restarted so it loads the new key.
+- **Bug found in live testing (DEV-24):** content-plan items stuck on "Waiting…" (pending) after generation — plan showed "ready" but e.g. 3/5 complete. **Root cause:** `defaultUpdateItem` (generation-queue.ts) did read-modify-write of the whole `items` jsonb array in JS; parallel item generation → concurrent writers clobber each other (lost updates). Unit test used an in-memory fake updater so it never caught the DB race.
+- **Fix:** rewrote `defaultUpdateItem` as a single **atomic SQL** merge into only the matching element (`jsonb_agg` + `jsonb_array_elements ... WITH ORDINALITY` + `elem || patch`); Postgres row-locking serializes concurrent updates. "generating" transition now clears prior error with `null` (not `undefined`). `ContentPlanItemRecord.error` → `string | null`.
+- **Proof (live vs Neon):** 5 concurrent updates — old way **2/5** completed (reproduces bug), new atomic way **5/5**. `tests ✅ (96/96)` · `typecheck ✅` · `lint ✅`.
+- Linear: QA-fix comment on DEV-24.
+
+**Anything the reviewer should know:**
+- The already-stuck plan can't be recovered from the UI (pending items on a completed plan show no Retry — only failed do); their Asset Kits likely exist in the Gallery. Create a fresh plan to verify. Possible defensive follow-up: retry affordance for non-terminal items on a completed plan (not done — the race is fixed).
+- DEV-24/25/26 still In Progress for review; full signed-in E2E now unblocked (working key + fix).
+
+**DEV-24 QA checklist run (same day):** exercised the real service singletons end-to-end via a temporary dev-only route (`/api/qa-temp`, since reverted → 404) for the Sunrise Cafe account:
+- Create → 5 items, quality score 95, real GPT titles, diverse types ✓
+- Approve & Generate All → **5/5 completed, 0 stuck pending**, all have media+kit (race fix proven live) ✓
+- Failure→retry → 1 failed then retry reprocessed only-failed → all completed ✓
+- Signed-out /plan → sign-in redirect; /api/plan* → 401 ✓ · feedback-loop wiring runs ✓ · Gallery has 10 kits ✓
+- **UX gap found + fixed:** State 3 (completed plan) had no path back to create. Added a **"Start a new plan"** button + made staged-loading render regardless of prior state (`plan-flow.tsx`). Signed-in *UI gestures* (inline edit/remove/add, hover thumbs, lightbox) still need a human browser (no test Clerk creds).
+- Files: `artifacts/web/src/lib/generation-queue.ts` (atomic updateItem), `src/db/schema.ts` (`ContentPlanItemRecord.error: string|null`), `src/components/plan/plan-flow.tsx` ("Start a new plan" + loading guard). `tests 96/96 ✅ · typecheck ✅ · lint ✅ · build ✅`.
+
+---
+
+### 2026-07-14 — DEV-25: Agent Evals (final Phase-2 slice → Phase 2 COMPLETE)
+
+**Done:**
+- **Three loops** (CONTEXT.md → Agent Eval / Plan Quality Score / Performance Feedback Loop / Pipeline Log):
+  - **Quality gate:** pure `scorePlanQuality` (0-100: platform coverage / type diversity / title rotation / day-spread + seasonal bonus). Wired into `ContentPlannerService.proposePlan` — **auto-regenerate below 60**, max 2 attempts, keep best, returns `score`. Silent to user.
+  - **Feedback loop:** `getPerformanceInsights(userId)` aggregates `generation_feedback` (DEV-26) ⨝ `asset_kits` by content type → plain-English summary → injected into the planner prompt via the DEV-20-reserved `performanceInsights` seam (`/api/plan` POST fetches it, non-fatal).
+  - **Reliability:** new `pipeline_logs` table + `persistentPipelineLogger` (console + fire-and-forget insert) wired as the default logger of all 5 pipeline services → "every step logs a row"; `getPipelineReliability()` aggregates per-step success/duration/cost.
+- New `src/lib/agent-evals.ts` (pure scorers + injectable-seam service) + `src/lib/pipeline-log.ts`.
+- **TDD:** agent-evals.test (10) + content-planner regenerate tests (4). Existing planner tests still green.
+- **Live:** `pipeline_logs` DDL + round-trip on Neon.
+- `tests ✅ (96/96)` · `typecheck ✅` · `lint ✅` · `build ✅` (server stopped first) · `/api/plan` still 401 signed-out.
+- **README updated** (last-slice-of-phase rule) — Agent Loop end to end.
+- Linear: DEV-25 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged):** admin reliability *dashboard* deferred to Phase 7 (ships service + data); regenerate capped at 2 (bounds GPT spend); `pipeline_logs` global (no userId). Touched DEV-20 planner by design (reserved seam).
+
+**Tech debt observed:** muapi ↔ pipeline-log type-only circular import (safe, works); `MediaType` still duplicated (schema + asset-kit, carried from DEV-26). Carried: OpenAI key (blocker), Muapi free-tier shim, esbuild push.
+
+**Anything the reviewer should know:**
+- **Phase 2 complete** — full Agent Loop (Plan→Retrieve→Route→Execute→Assemble→UI→Gallery→Evals) built. DEV-24/25/26 await review; DEV-15–23 Done.
+- Live E2E of scoring/insights needs the OpenAI key replaced. Next phase: Phase 3 (UGC Video), first slice DEV-27 (script generation).
+
+---
+
+### 2026-07-14 — DEV-26: Gallery (browse/manage generated content + thumbs up/down)
+
+**Done:**
+- Built on top of DEV-24 **while DEV-24 stays In Progress** (human instruction). UI slice, DESIGN §9.7.
+- New `generation_feedback` table (user+kit FK cascade, rating up/down, unique (user, kit)) — direct DDL to Neon + round-trip proving upsert re-rate keeps one row and kit-delete cascades feedback.
+- New `src/lib/gallery.ts` (pure: `parseGalleryQuery` clamp/validate, `pageOffset`, `toggleRating`, `GalleryItem`) — **TDD, 6 tests**.
+- API: `GET /api/gallery` (12/page lookahead `hasMore`, type+platform filter, sort, LEFT JOIN caller's rating), `POST /api/gallery/feedback` (ownership-scoped toggle via `onConflictDoUpdate`/delete), `PATCH`+`DELETE /api/gallery/[id]` (caption edit, delete).
+- UI at `/gallery` (route group): filter/sort bar, grid 3/2/1, hover-thumbs cards, Radix Dialog lightbox (editable caption + hashtag pills + prominent "Did this match your brand?" + Download/Delete), load-more, skeleton + empty states, optimistic ratings. New `dialog.tsx` primitive. Middleware protects `/gallery(.*)`; sidebar link → `/gallery`.
+- `tests ✅ (82/82)` · `typecheck ✅` · `lint ✅` · `build ✅` (server stopped first) · gallery APIs 401 signed-out · `/gallery` → sign-in redirect (browser) · no console errors.
+- Linear: DEV-26 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged):** type filter = All/Images/Videos (mediaType) not DESIGN's Photo/Graphic/Video (not represented in the data model — photos + graphics are both `image`); deferred Publish (Phase 4), Regenerate, multi-select, date-range filter.
+
+**Tech debt observed:** `MediaType` now duplicated in `schema.ts` (added here) + `asset-kit.ts` (DEV-23) — identical union; dedupe by importing from schema when DEV-23 is next touched. Carried: OpenAI key (blocker), inline queue, esbuild push.
+
+**Anything the reviewer should know:**
+- Signed-in gallery UI (grid/lightbox/feedback) unverified — no test Clerk creds + gallery empty until content generates (OpenAI key). QA checklist on the issue is the human pass.
+- Only **DEV-25 (Agent Evals)** remains in Phase 2; it consumes `generation_feedback` + the DEV-20 `performanceInsights` seam and needs a `pipeline_logs` table.
+
+---
+
+### 2026-07-14 — DEV-24 follow-up: plan page moved to `/plan` (human decision)
+
+**Done:**
+- Human resolved the flagged path deviation: **DESIGN.md §9.5's literal `/plan`**. Implemented via a new `src/app/(dashboard)/` **route group** (the structure plan-phase-2.md's file list specified) whose layout reuses `DashboardShell` — root-level URL, dashboard chrome intact. Page moved, old `src/app/dashboard/plan/` deleted, middleware protects `/plan(.*)`, sidebar link updated. APIs unchanged.
+- **Verified:** `GET /plan` 200 signed-in (human's own session in the live server logs), signed-out navigation → sign-in redirect w/ correct `redirect_url`; `typecheck ✅ · lint ✅ · tests 76/76 ✅`. (Dev-server restart + `.next` clear needed for the route group to register — consistent with the known cache gotcha.)
+- **Observed during the human's live testing:** Create My Content Plan → 502 on the **revoked OpenAI key** (error handling + pipeline logs worked as designed). Key replacement remains the only blocker for the full QA pass.
+- Linear: decision + change summary posted on DEV-24 (still In Progress for review).
+
+**Tech debt observed:** none new. Note: `/dashboard` and the group pages now render the shell via two layout files (literal + group) — merging `/dashboard` into the group later would unify them (cheap, low priority).
+
+---
+
+### 2026-07-13 — DEV-24: Content Plan UI (the Agent Loop goes user-facing)
+
+**Done:**
+- **First Phase-2 UI slice** (DESIGN.md §9.5 + §2–7 read first). Full flow at `/dashboard/plan`: State 1 create-hero w/ staged loading copy → State 2 review cards (inline description edit, remove, minimal add-item, sticky "N items · Will use N credits" + Approve footer) → State 3 per-item progress (dim/shimmer/thumbnail+View/Failed+Retry), top progress bar, 2.5s polling, completion banner. Skeleton loaders; Zinc+Emerald tokens; lucide icons (codebase family — DESIGN §2 exception over Phosphor).
+- New `content_plans` table (items jsonb w/ per-item status/assetKitId/mediaUrl/error; plan status draft→approved→generating→completed) — direct DDL to Neon + round-trip (push still esbuild-blocked).
+- New **Generation Queue** (`generation-queue.ts`): per item route by content type (product_showcase→photo pipeline with `matchProduct`; others incl. ugc_ad→graphic) → caption → Asset Kit assembly; `Promise.allSettled` parallelism, failure isolation, per-item DB status writes; retry processes pending+failed only. **TDD: 6 tests.**
+- New API routes: `GET/POST/PATCH /api/plan` (latest / propose-via-planner replacing prior draft, 409 while generating / Zod-validated draft item edits) and `POST /api/plan/approve` (claim → generating → queue inline → completed + totalCost; re-approve retries failed items).
+- `tests ✅ (76/76)` · `typecheck ✅` · `lint ✅` · `build ✅` (server stopped first) · signed-out auth verified in-browser (`/dashboard/plan` → sign-in redirect w/ redirect_url; APIs 401) · no console errors.
+- Linear: DEV-23 → **Done** (human approved); DEV-24 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged for reviewer):** path `/dashboard/plan` (existing sidebar link + chrome + middleware) vs DESIGN's `/plan` — human's call, cheap to move; credits footer shows "Will use N" only (no fake balance before Phase-6 billing); drag-reorder deferred (DnD dep); quality scoring → DEV-25; Gallery → DEV-26 (View opens media directly).
+
+**Tech debt observed:** approve runs the queue inline in the request — fine at free-tier/mock latency, likely needs a background job for real model latency; curl-based signed-out checks on pages return 404 (Clerk treats non-browser requests differently) — browser check is the real signal.
+
+**Anything the reviewer should know:**
+- **Signed-in E2E blocked**: revoked OpenAI key (still 401) + no test Clerk credentials. The QA checklist on DEV-24 is the human verification pass — replace the key first.
+- Phase 2 remaining: DEV-26 (Gallery), DEV-25 (Agent Evals).
+
+---
+
+### 2026-07-13 — DEV-23: Asset Kit assembly + auto-embed (Assemble step)
+
+**Done:**
+- New `asset_kits` table in `schema.ts` (user FK, title, contentType enum, platform, R2 `mediaUrl`, mediaType, caption, hashtags jsonb, cost, status draft/ready/published, timestamps, user index). Applied via **direct DDL matching drizzle's SQL** (push still esbuild-blocked); live insert/select round-trip verified on Neon (hashtags/cost/status all correct), cleaned up.
+- New `src/lib/asset-kit.ts` — `AssetKitService.assemble`: download generated media (content-type→extension via `extensionFor`) → upload to R2 (`asset-kits/{userId}/{ts}.{ext}`) → insert kit row (status `ready`) → **non-fatal embed-back** of title+caption as a `generation`-kind Brand KB embedding (Auto-Embedding: the system learns from every generation). Critical path ordered before the soft step so an embed failure can never lose a saved kit. Injectable download/upload/save/embed seams.
+- **TDD:** `asset-kit.test.ts` (6) — extension mapping + fallbacks, assembly order, R2-owned mediaUrl (never the source link), embed content, embed-failure-non-fatal, download-failure-fatal.
+- `tests ✅ (70/70)` · `typecheck ✅` · `lint ✅` · `build ✅` — **dev server stopped before the build** this time (the `.next` gotcha), fresh cache + restart after.
+- Linear: DEV-22 → **Done** (human approved); DEV-23 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged):** `generations`/`pipeline_logs` tables NOT created (belong to DEV-46 credit tracking / DEV-25 evals; kit row carries aggregate `cost`); R2 not live-re-smoked (proven in DEV-8/11; avoids junk bucket objects); embed-back live check still gated on the revoked OpenAI key (401 re-verified this session — human action outstanding).
+
+**Tech debt observed:** none new. Carried: OpenAI key replacement (blocker), Muapi free-tier shim, esbuild binaries.
+
+**Anything the reviewer should know:**
+- Full Agent Loop service chain now exists: Plan → Retrieve → Route → Execute → Assemble. DEV-24 (Content Plan UI) wires it user-facing — first Phase-2 UI slice (DESIGN.md required) and likely the biggest; consider splitting it.
+
+---
+
+### 2026-07-13 — DEV-22: Text generation (captions/hashtags/ad copy) + env fixes
+
+**Done:**
+- New `src/lib/text-generation.ts` — the text side of Execute: `generateCaption` (RAG retrieve → brand-conditioned prompt w/ tone/audience/platform/content-type → GPT-4.1-mini structured `{caption, hashtags}` → `normalizeHashtags`: strip `#`, case-insensitive dedupe, cap 10) and `generateAdCopy` (headline/body/cta, same conditioning). Injectable `CaptionLLM`/`AdCopyLLM`/`TextRetriever` seams; shared timing/logging wrapper (steps `execute:caption`/`execute:ad_copy`); GPT cost from token usage. DEV-13 tracer (`openai.ts`) untouched — migrating it is tech debt for when the tracer retires.
+- **TDD:** `text-generation.test.ts` (6) — normalization rules, both prompt builders, caption flow w/ retrieval, ad-copy flow, per-op logging, failure propagation.
+- **🔑 Live smoke BLOCKED — revoked OpenAI key (env, not code):** `OPENAI_API_KEY` returns 401 straight from OpenAI's API (worked 2026-07-09). Verified independently with a direct `curl` to `/v1/models`. Logic fully unit-tested; identical `generateObject` pattern was live-verified in DEV-20. **Human action: replace the key in `.env.local`.** Affects auto-embedding (non-fatal), planner, retrieval, and this service at runtime until fixed.
+- **Fixed the user-reported `.next` vendor-chunk crash** (Clerk module not found on `/sign-up`): cause was running `pnpm build` while the dev server shared `.next`. Stop → `rm -rf .next` → restart; `/sign-up` compiles clean, no console errors. Repeated the mistake once during this slice's own build step and self-corrected the same way. Gotcha recorded in Current status.
+- `tests ✅ (64/64)` · `typecheck ✅` · `lint ✅` · `build ✅` · live smoke ⚠️ blocked (key).
+- Linear: DEV-21 → **Done** (human approved); DEV-22 → In Progress, approach note + completion comment (incl. key blocker) posted; left In Progress for review.
+
+**Decisions (flagged):** kept the DEV-13 tracer on its own `openai.ts` (no drive-by migration); hashtag canonical form = no leading `#` (matches DEV-13 convention).
+
+**Tech debt observed:** DEV-13 tracer should eventually consume `TextGenerationService`; `.next`-vs-build gotcha suggests stopping the dev server before slice-end builds (process note, now documented).
+
+**Anything the reviewer should know:**
+- Replace the OpenAI key first — it gates live verification of this slice AND runtime behavior of DEV-16/17/20 services.
+- Next: DEV-23 (Asset Kit assembly + auto-embed) — first persistence slice of Phase 2 (asset_kits/generations tables, R2 upload, embed-back).
+
+---
+
+### 2026-07-09 — DEV-21: Social media graphic generation (Execute step)
+
+**Done:**
+- New `src/lib/social-graphic.ts` — `SocialGraphicService.generate`: RAG retrieve (DEV-16) → brand-conditioned prompt (tone / brand colors / audience / content-type angle) → route `social_graphic` (DEV-18) → Muapi generate (DEV-15) at the format's aspect ratio. `FORMAT_ASPECT_RATIOS` lookup (post 1:1 / story 9:16 / banner 16:9) baked into generation (no separate reframe step). Injectable Muapi/retriever/router seams; pure `buildGraphicQuery`/`buildGraphicPrompt`.
+- **DRY refactor:** extracted the free-tier `resolveAvailableModel` shim from `product-photo.ts` into shared `src/lib/muapi-availability.ts` (used by both pipelines; `product-photo.ts` re-exports it — no behavior change, DEV-19 tests still pass). Preserves "one deletion on key upgrade."
+- **TDD:** `social-graphic.test.ts` (6) — builders, default + per-format aspect ratio, override→nano-banana-2, RAG context injection, failure propagation.
+- **Live verification:** generated a real graphic via Muapi `nano-banana-2` with `aspect_ratio` — submit → poll → completed → output URL (free-tier mock, $0).
+- `tests ✅ (58/58)` · `typecheck ✅` · `lint ✅` · `build ✅`.
+- Linear: DEV-19 → **Done** (human approved via "keep going"); DEV-21 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged):** format→aspect-ratio at generation time (not a reframe step); shared shim extraction (small refactor touching DEV-19's file — import/re-export only); generation only (no R2/DB — DEV-23; no UI — DEV-24).
+
+**Tech debt observed:** none new. The `muapi-availability.ts` shim remains the tracked free-tier workaround (delete on key upgrade).
+
+**Anything the reviewer should know:**
+- Next slice DEV-22 (OpenAI text: captions/hashtags/ad copy) extends the DEV-13 tracer `generateCaption` into a real RAG-conditioned service — the text side of Execute before Assemble (DEV-23).
+
+---
+
+### 2026-07-09 — DEV-19: Product photo generation pipeline (Execute step)
+
+**Done:**
+- New `src/lib/product-photo.ts` — first **Execute**-step pipeline: `ProductPhotoService.generate` chains RAG retrieve (DEV-16) → optional background removal (when `sourceImageUrl`) → brand-conditioned scene generation → optional reframe (per aspect ratio), routing models via the Model Router (DEV-18) and running them via the MuapiService (DEV-15). Aggregates cost, records per-step, passes step labels to Muapi for self-logging. Injectable Muapi/retriever/router seams; pure `buildPhotoQuery`/`buildScenePrompt`.
+- **Free-tier shim (human's call):** `resolveAvailableModel()` maps the router's intended slugs → `nano-banana-2` (only model on this account's free tier; others 404 per DEV-8). Isolated in one TODO-marked function; router stays faithful to ARCHITECTURE. Delete on key upgrade.
+- **TDD:** `product-photo.test.ts` (6) — shim mapping, builders, minimal + full pipeline (bg-removal feeds scene, reframes, cost sums to 0.17), bg-removal skip, failure propagation.
+- **Live verification:** ran the real scene-generation step against Muapi `nano-banana-2` — submit → poll → completed → output URL (cost $0 on free tier, expected). Chain runs end to end.
+- `tests ✅ (52/52)` · `typecheck ✅` · `lint ✅` · `build ✅`.
+- Linear: DEV-20 → **Done** (human approved via "proceed per DAG"); DEV-19 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged):** generation only (no R2/DB — that's DEV-23 Assemble); bg-removal + reframe implemented but default-off (no product-image-upload feature; need upgraded key to be meaningful); nano-banana override per human.
+
+**Tech debt observed:** the `resolveAvailableModel` free-tier shim is the tracked workaround — remove when the Muapi key is upgraded (DEV-21 reuses it until then).
+
+**Anything the reviewer should know:**
+- Free-tier generations return mock output at $0; live check proves the flow, not image quality.
+- Next slice DEV-21 (social graphic) is the same shape (text-to-image via RAG-conditioned prompt) and reuses the shim.
+
+---
+
+### 2026-07-09 — DEV-20: Content Plan Proposal engine (Plan step)
+
+**Done:**
+- New `src/lib/content-planner.ts` — the Agent Loop **Plan** step and first slice to *compose* the foundations: `ContentPlannerService.proposePlan(userId, profile, opts?)` looks up the industry strategy (reuses DEV-12 `INDUSTRY_TEMPLATES`), retrieves relevant brand context (DEV-16 RAG), finds upcoming holidays (new `seasonal.ts`), builds a structured prompt, calls GPT-4.1-mini `generateObject`, and normalizes to 5-7 `ContentPlanItem`s (cap 7, drop invalid content types, snap platform to the business's connected list, stamp 1 credit). Injectable `PlanGenerator`+`PlanRetriever` seams; pure `buildRetrievalQuery`/`buildPlannerPrompt`/`normalizeItems`.
+- New `src/lib/seasonal.ts` — fixed-date US `HOLIDAYS` + `upcomingHolidays(now, windowDays)` (year rollover, sorted nearest-first).
+- **Reuse decisions:** did NOT create the plan's `data/industry-strategies.json` (INDUSTRY_TEMPLATES already is the strategy, per its own doc comment) nor `data/holidays.json` (TS module matches the codebase convention). Flagged in the completion comment.
+- **TDD:** `content-planner.test.ts` (8) + `seasonal.test.ts` (5) written first — builders, orchestration, normalization, holiday window/rollover, logging.
+- **Live verification:** real GPT-4.1-mini produced a valid 5-item plan for a sample trattoria that referenced the RAG-retrieved product, respected the platform list, followed the restaurant weekly mix, and included 2 Valentine's items (built 5 days before Valentine's).
+- `tests ✅ (46/46)` · `typecheck ✅` (validates the generateObject schema) · `lint ✅` · `build ✅`.
+- Linear: DEV-18 → **Done** (human approved via "proceed per the Linear DAG"); DEV-20 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged, reversible/forward-compatible):** proposal only (no `content_plans` persistence — DEV-24); quality scoring + feedback loop deferred to DEV-25 (`performanceInsights` seam reserved); estimatedCredits=1/item; US-only fixed-date holidays (no `region` field yet).
+
+**Tech debt observed:** none new. Carried: Muapi model-availability caveat affects the *next* slice (DEV-19) — only `nano-banana-2` works on the free-tier key.
+
+**Anything the reviewer should know:**
+- First slice to exercise retrieval + industry templates + LLM together end to end (validated live).
+- Next slice DEV-19 (product photo generation) is the first to actually call Muapi generation → will hit the model-key caveat; worth resolving the key first.
+
+---
+
+### 2026-07-09 — DEV-18: Model Router (asset type → Muapi model)
+
+**Done:**
+- New `src/lib/model-router.ts` — the Agent Loop **Route** step: `ROUTING_TABLE: Record<AssetType, {standard, premium?}>` transcribed from ARCHITECTURE.md §Route (6 asset types: product_photo, social_graphic, video_animate, ugc_lipsync, background_removal, reframe; model slug + `estimatedCost` per cell). `ModelRouter.route(assetType, quality='standard', params?) → { model, params, estimatedCost }`: default-standard, premium→standard fallback where no premium (background_removal), caller-param merge, unknown-type throw. Pure config, no deps. Model slugs never surface to users ("invisible to users").
+- **TDD:** `src/lib/model-router.test.ts` (8 tests) — exhaustive resolution, default/premium/fallback, cost values, param merge + caller-override precedence, unknown-type guard.
+- Glossary: added **Asset Type** + **Quality (Route Tier)** to CONTEXT.md; annotated **Model Router** with the impl path.
+- Fixed a test-only typecheck error (partial-table cast → spread `ROUTING_TABLE`).
+- `tests ✅ (33/33)` · `typecheck ✅` · `lint ✅` · `build ✅`. No live smoke (pure config, no external I/O).
+- Linear: DEV-16 → **Done** (human approved via "proceed"); DEV-18 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged, reversible):** table faithful to ARCHITECTURE (incl. Phase-3 video/UGC rows as config only); default per-model `params` empty (caller-merge) to avoid guessing Muapi param names; no consumer/route wiring yet.
+
+**Tech debt observed:** availability caveat carried from DEV-8 — only `nano-banana-2` confirmed on this account's free tier; the router encodes *intended* models, so DEV-19/21 may need slug overrides until the key is upgraded.
+
+**Anything the reviewer should know:**
+- Model Router has no consumer yet by design — generation pipelines (DEV-19/21) call it.
+- Foundations (DEV-15/16/17/18) done → generation + planner slices open up next.
+
+---
+
+### 2026-07-09 — DEV-16: Retrieval service (semantic search)
+
+**Done:**
+- New `src/lib/retrieval.ts` — the Agent Loop **Retrieve** step: `RetrievalService.retrieve(userId, query, {k?, kinds?})` embeds the query and cosine-searches `brand_embeddings` (scoped to the user, optional `kind` filter), returning the top-k `{content, kind, similarity}`; `retrieveContext` also returns a formatted prompt block via `formatRetrievedContext`. Default **k=8** (CONTEXT.md "top-k"). Injectable `QueryEmbedder`+`VectorSearch` seams (unit-tested with fakes); default search = drizzle `cosineDistance` ordered by distance against the DEV-17 HNSW index; default query embedder reuses `openAIEmbedder`.
+- Exported DEV-17's `defaultEmbedder` as `openAIEmbedder` so retrieval reuses one embedding-model/cost source (no behavior change).
+- **TDD:** `src/lib/retrieval.test.ts` (7 tests) — formatting, top-k default, custom k + kind passthrough, blank-query short-circuit, retrieveContext, success + failure logging.
+- **Live verification:** seeded 3 semantically distinct embeddings for a real user (real OpenAI), queried "Italian food and pasta" → pizza ranked #1 (sim 0.46) over car-repair (0.22) / photography (0.21); seed rows cleaned up. Confirms cosine ordering end to end.
+- `tests ✅ (25/25)` · `typecheck ✅` (validates drizzle `cosineDistance` query) · `lint ✅` · `build ✅`.
+- Linear: DEV-17 → **Done** (human approved via "proceed"); DEV-16 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged, reversible):** top-k only (no min-similarity floor yet); blank query short-circuits; no route/UI wiring (no consumer until DEV-20 planner / generation slices).
+
+**Tech debt observed:** none new this session.
+
+**Anything the reviewer should know:**
+- Retrieval has no consumer yet by design — DEV-20 (Content Planner) and the generation pipelines will call it.
+- No schema change — uses the HNSW cosine index from DEV-17.
+
+---
+
+### 2026-07-09 — DEV-17: Brand Knowledge Base (pgvector + embedding pipeline)
+
+**Done:**
+- Enabled **pgvector on Neon** (`CREATE EXTENSION vector`, v0.8.1) and added the `brand_embeddings` table (`vector(1536)`, `kind` enum, user FK cascade, HNSW cosine index) to `src/db/schema.ts`. Applied via **direct DDL matching drizzle's generated SQL** (drizzle-kit push needs the stripped esbuild binary — DEV-12 gap), so a future `db:push` is a no-op; `schema.ts` stays source of truth.
+- New `src/lib/embeddings.ts` — Brand Knowledge Base pipeline: pure `businessProfileToChunks` (one chunk/product + one brand-guideline chunk) and an injectable `BrandKnowledgeBase.syncBusinessProfile` (fake `Embedder`+`EmbeddingStore` seams for tests). Default embedder = OpenAI `text-embedding-3-small` via AI SDK `embedMany` (cost @ $0.02/1M tokens); default store = Drizzle delete+insert with **replace-on-sync** scoped to `product`/`brand_guideline` kinds. Reuses the DEV-15 `PipelineLogger` type; all `@/…`/AI-SDK value imports lazy so the module loads under the bare Node test runner.
+- Wired **non-fatal auto-embedding** into `business-profile` POST (onboarding completion) + PATCH (edits) — a `syncKnowledgeBase` helper that logs and swallows failures so the profile save never breaks. GET untouched.
+- **TDD:** `src/lib/embeddings.test.ts` (6 tests) written first — chunking, blank/absent handling, embed+store replace semantics, cost, success + failure logging.
+- **Live verification:** stored + read back a real 1536-dim vector through the actual column (dims=1536, cleaned up); ran a real OpenAI `embedMany` call (2 vectors, 1536 dims, 19 tokens) — confirms the default embedder path end to end.
+- `tests ✅ (18/18)` · `typecheck ✅` (validates AI SDK `openai.embedding`/`embedMany` against installed versions) · `lint ✅` · `build ✅` (all routes intact).
+- Linear: DEV-15 → **Done** (human approved); DEV-17 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flagged in approach note, all reversible):**
+- Non-fatal embedding · replace-on-sync · inline/awaited on the request path · chunking = per-product + one brand-guideline chunk.
+
+**Tech debt observed:**
+- `defaultStore` does delete-then-insert as two neon-http statements (not atomic). Fine for MVP; could use `db.batch` for a transaction if it matters.
+- Carried over: drizzle-kit push / `db:push` still blocked by the stripped esbuild binary — schema changes need direct DDL or a restored install.
+
+**Anything the reviewer should know:**
+- Retrieval/similarity *search* is deliberately out of scope (next slice, DEV-16); the HNSW index is already in place for it.
+- `generation`/`caption_edit` embedding kinds exist in the schema but are only written by later generation slices.
+
+---
+
+### 2026-07-08 — DEV-15: Muapi.ai integration service (first Phase 2 slice)
+
+**Done:**
+- Rewrote `src/lib/muapi.ts` from DEV-8's minimal tracer client into the real service the rest of Phase 2 depends on: **retry with exponential backoff** (network err / 429 / 5xx, max 3, delays 500→1000→2000ms; no retry on other 4xx), **typed `MuapiError`** (`status` + `retryable`), **cost tracking** (`X-MuAPI-Cost-USD` header → body fallback), and an **injectable `PipelineLogger` hook** emitting `{ step, model, durationMs, success, cost, error? }` (matches CONTEXT.md "Pipeline Log"). Generalized the return to `{ outputs, imageUrl, cost, model, requestId }` — `imageUrl` (= `outputs[0]`) retained so the DEV-8 tracer route needs no change.
+- Made the service fully injectable (`fetch`/`sleep`/clock/apiKey/logger) and moved the env read to a lazy `import("@/env")`, so the module is unit-testable without a validated env.
+- **TDD:** wrote `src/lib/muapi.test.ts` first (12 tests, red → green): happy path, cost header/body, retry 429/500, no-retry 400, retry exhaustion, exact backoff timing, failed status, timeout, empty outputs, success + failure logging.
+- **Decision — test runner (asked human up front):** chose "set up a real runner now" but discovered **Vitest can't run here** — the workspace's pnpm overrides strip the native esbuild/rollup binaries it needs (same root cause as DEV-12's `db:push` esbuild gap). Adapted to **Node 24's built-in `node --test` + native TS type-stripping** — zero new deps, runs clean. This is now the Phase-2 test harness; `pnpm test` wired at web package + repo root. Enabling change: `allowImportingTsExtensions` in web tsconfig.
+- **Decision — pipeline_logs (asked human up front):** deferred DB persistence; injectable console-backed logger for now, wired to the real `pipeline_logs` table when it's created (DEV-17 / generation slices).
+- `tests ✅ (12/12)` · `typecheck ✅` · `lint ✅` · `build ✅` (all routes intact, tracer unaffected).
+- Linear: DEV-15 → In Progress, approach note + completion comment (5-section format) posted; left In Progress for review (no "Needs Review" status on the team).
+
+**Tech debt observed:**
+- No `@esbuild/darwin-x64` / rollup native binaries in the install (stripped by workspace overrides) → Vitest and `db:push` both need workarounds. A restored install (or committed binaries) would remove the friction. Carried over from DEV-12.
+- `node --test` prints a benign `MODULE_TYPELESS_PACKAGE_JSON` reparse warning; left as-is (adding `"type":"module"` risks Next's CommonJS config files).
+
+**Anything the reviewer should know:**
+- No live Muapi call this session — DEV-8 already proved the live contract; this slice hardens it and is covered entirely by unit tests with a fake network.
+- Scope held to the service layer + tests; pgvector/RAG, model router, and the generation pipelines remain in later slices.
+
+---
+
+### 2026-07-08 — Phase 1 closeout: README update + status roll to Phase 2
+
+**Done:**
+- Human confirmed all Phase 1 slices (DEV-9/10/11/12/14/59) moved to **Done** in Linear.
+- Rewrote `README.md` (was still "Phase 0 — Scaffold in progress") to reflect current reality: Phases 0–1 complete, "What works today" summary (landing, Clerk auth + webhook/JIT sync, onboarding wizard, dashboard summary card, generation tracer), monorepo layout, getting-started + scripts, and the agent-workflow pointer. Satisfies the last-slice-of-phase README rule.
+- Rolled `PROGRESS.md` current status forward to Phase 2; next slice identified as **DEV-15 (Muapi.ai integration service)** — root of the Phase 2 DAG, blocker DEV-14 now Done.
+- No code changed this session (docs only) — no typecheck/lint/build run needed.
+
+**Anything the reviewer should know:**
+- DEV-15 not started this session (awaiting go-ahead). When picked up: read `plan-phase-2.md`, post approach note, move DEV-15 → In Progress, TDD.
+- **Tech debt:** no `.env.local.example` exists in `artifacts/web` (only a live `.env.local`). README now points new devs to `src/env.ts` for required vars instead; a committed `.env.local.example` would be friendlier.
+
+---
 
 ### 2026-07-05 — DEV-14 dashboard summary card + DEV-10 §9.3 wizard polish
 

@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/onboarding(.*)",
+  "/plan(.*)",
+  "/gallery(.*)",
 ]);
 const isWebhookRoute = createRouteMatcher([
   "/api/webhooks(.*)",

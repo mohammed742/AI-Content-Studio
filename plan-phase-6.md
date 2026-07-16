@@ -41,5 +41,5 @@ src/middleware.ts (feature gates)
 | Risk | Mitigation |
 |------|-----------|
 | Webhook delivery failures | Idempotency keys; Stripe retries automatically |
-| Credit count race conditions | DB transactions or atomic increment |
+| Credit count race conditions | Atomic increment (`SET creditsUsed = creditsUsed + 1 ... RETURNING`) — the neon-http driver does NOT support interactive transactions (see .agents/memory/neon-http-no-transactions.md); do not plan on db.transaction |
 | Pricing TBD | Leave configurable; finalize after computing actual COGS |

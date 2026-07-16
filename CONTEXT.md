@@ -28,7 +28,9 @@
 | **Execute Step** | Parallel API calls to Muapi (visual assets) and OpenAI (text assets). |
 | **Assemble Step** | Combines generated media + text into a complete Asset Kit. Uploads media to R2, saves metadata to DB. |
 | **Publish Step** | Optionally pushes the Asset Kit to YouTube / TikTok / Instagram via Muapi's social publishing API. |
-| **Model Router** | Decision logic mapping asset types to AI models. E.g., product photo → `ai-product-photography`, social graphic → `flux-schnell`, UGC video → `creatify-lipsync`. |
+| **Model Router** | Decision logic mapping asset types to AI models. E.g., product photo → `ai-product-photography`, social graphic → `flux-schnell`, UGC video → `creatify-lipsync`. Implemented in `src/lib/model-router.ts` as a config-driven table (DEV-18). |
+| **Asset Type** | The kind of media the Model Router routes to a Muapi model. Canonical values (`src/lib/model-router.ts`): `product_photo`, `social_graphic`, `video_animate`, `ugc_lipsync`, `background_removal`, `reframe`. Distinct from **Content Type** (the editorial category of a post). |
+| **Quality (Route Tier)** | The Model Router tier chosen per asset: `standard` (fast/cheap) or `premium` (higher quality). Invisible to users. |
 | **Generation** | One invocation of an AI model producing one output (one image, one video clip, one text block). The atomic billing unit. |
 | **Generation Credit** | Internal unit tracking AI usage per user per billing period. One generation = one credit. Different asset types may cost multiple credits. |
 | **UGC Pipeline** | The 5-step User-Generated Content video pipeline: script → voiceover → lipsync → B-roll → assembly. Produces a talking-head style product review video at ~$0.91. |

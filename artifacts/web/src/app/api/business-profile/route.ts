@@ -18,7 +18,28 @@ import {
   insertBusinessProfileSchema,
   updateBusinessProfileSchema,
 } from "@/db/schema";
+import { brandKnowledgeBase } from "@/lib/embeddings";
 import { ensureLocalUser } from "@/lib/local-user";
+
+/**
+ * Auto-embed the profile into the Brand Knowledge Base (CONTEXT.md →
+ * "Auto-Embedding"). Non-fatal: the profile save is the primary action, so an
+ * embedding/OpenAI failure is logged but never fails the request. Error
+ * tracking is Phase 8, so console for now.
+ */
+async function syncKnowledgeBase(
+  userId: string,
+  profile: typeof businessProfiles.$inferSelect,
+): Promise<void> {
+  try {
+    await brandKnowledgeBase.syncBusinessProfile(userId, profile);
+  } catch (error) {
+    console.error(
+      "[business-profile] brand knowledge base sync failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
 
 export async function GET() {
   const { userId: clerkId } = await auth();
@@ -108,6 +129,8 @@ export async function POST(req: Request) {
     .values({ ...parsed.data, userId: user.id })
     .returning();
 
+  await syncKnowledgeBase(user.id, profile);
+
   return NextResponse.json({ data: profile, error: null }, { status: 201 });
 }
 
@@ -166,6 +189,8 @@ export async function PATCH(req: Request) {
       { status: 404 },
     );
   }
+
+  await syncKnowledgeBase(user.id, profile);
 
   return NextResponse.json({ data: profile, error: null });
 }

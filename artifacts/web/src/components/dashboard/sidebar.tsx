@@ -28,7 +28,7 @@ const navItems = [
   },
   {
     label: "Content Plan",
-    href: "/dashboard/plan",
+    href: "/plan",
     icon: ListChecks,
   },
   {
@@ -38,7 +38,7 @@ const navItems = [
   },
   {
     label: "Gallery",
-    href: "/dashboard/gallery",
+    href: "/gallery",
     icon: Image,
   },
   {

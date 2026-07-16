@@ -49,6 +49,7 @@
 
 ### During
 - **One slice per session.** Never start the next.
+- **Server Actions, not browser-called `/api` routes** (the Replit workspace proxy intercepts `/api/*`; external webhooks like Clerk/Stripe are the exception). See `.agents/memory/nextjs-api-routes-blocked.md`.
 - **Feedback loop:** `pnpm typecheck && pnpm lint` after every change. Full `pnpm test` at milestones and before completion only.
 - **TDD scope:** Strict TDD for `src/lib/` services, API routes, webhooks. UI components get smoke test + human visual QA.
 - Use CONTEXT.md vocabulary everywhere. No drive-by refactors (log as tech debt).
@@ -57,25 +58,11 @@
 
 ### End
 1. `pnpm build` to confirm no regressions
-2. Post **one completion comment** on Linear issue with these sections:
+2. Post one completion comment on Linear issue with these sections:
    - **What was built** — plain English, no jargon
    - **What was tested** — which checks passed (typecheck, lint, test, build)
-   - **🎓 What You Learned** — identify the 2-3 most important concepts introduced by this slice. Follow these rules strictly:
-     (1) Name concepts, not tools. Say "type safety" not "TypeScript", "authentication" not "Clerk", "schema-as-code" not "Drizzle". The concept transfers; the tool name doesn't.
-     (2) Do NOT explain technologies like a documentation page. Explain the specific problem that was solved and why the decision mattered for THIS project.
-     (3) For each concept use this format:
-         ### [Concept Name]
-         [One sentence: what real-world problem this solves.]
-         **Without it:** [what goes wrong — be specific to this project]
-         **With it:** [what improves — be specific to this project]
-         → [Link to official docs from RESOURCES.md]
-     (4) No jargon without immediate explanation. No code snippets. No overused analogies (restaurants, kitchens, cooking, recipes, filing cabinets, etc.).
-     (5) Check PROGRESS.md "Concepts Introduced" — don't re-explain concepts from earlier slices.
-     (6) Every explanation must answer: "Why should I care?"
-     (7) The entire 🎓 section must take under 2 minutes to read. If it's longer, cut it.
-   - **💬 Explain It Yourself** — two questions that force the reader to recall what they learned without looking back:
-     (1) **Client question:** "If a client asked 'Why did you build it this way instead of the simpler approach?' — what would you say?"
-     (2) **Interview question:** "Explain [the main concept from this slice] in 30 seconds as if the interviewer has never heard of it."
+   - **🎓 What You Learned** — identify the 2–3 most important concepts introduced by this slice. Follow these rules strictly: (1) Name concepts, not tools. Say "type safety" not "TypeScript", "authentication" not "Clerk", "schema-as-code" not "Drizzle". The concept transfers; the tool name doesn't. (2) Do NOT explain technologies like a documentation page. Explain the specific problem that was solved and why the decision mattered for THIS project. (3) For each concept use this format: `### [Concept Name]` / one sentence: what real-world problem this solves / `Without it:` what goes wrong — specific to this project / `With it:` what improves — specific to this project / `→` link to official docs from `RESOURCES.md`. (4) No jargon without immediate explanation. No code snippets. No overused analogies (restaurants, kitchens, cooking, recipes, filing cabinets, etc.). (5) Check PROGRESS.md "Concepts Introduced" — don't re-explain concepts from earlier slices. (6) Every explanation must answer: "Why should I care?" (7) The entire 🎓 section must take under 2 minutes to read. If it's longer, cut it.
+   - **💬 Explain It Yourself** — two questions that force the reader to recall what they learned without looking back: (1) Client question: "If a client asked 'Why did you build it this way instead of the simpler approach?' — what would you say?" (2) Interview question: "Explain [the main concept from this slice] in 30 seconds as if the interviewer has never heard of it."
    - **QA Checklist** — a markdown checklist (`- [ ]`) of specific steps the reviewer should follow to verify the work. Keep it concrete and actionable (e.g. "Sign up with a test account and confirm a user row appears in the database"). No vague items like "verify it works."
    - **Anything the reviewer should know** — gotchas, deviations from the plan, decisions made
 3. Move issue → **Needs Review**
