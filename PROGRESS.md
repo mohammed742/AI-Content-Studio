@@ -4,15 +4,27 @@
 
 ## Current status
 
-- **Active phase**: Phase 2 — Visual Generation Core (Phase 1 complete & approved 2026-07-08).
-- **Active plan file**: `plan-phase-2.md`.
-- **Active phase**: **Phase 2 — Visual Generation Core → COMPLETE** (all 13 slices built; DEV-24/25/26 In Progress for human review, rest Done). **Next phase: Phase 3 — UGC Video Pipeline** (`plan-phase-3.md`).
-- **Current sub-task**: **DEV-25 (Agent Evals)** — implemented + tested this session (2026-07-14), left **In Progress** for human review. **Final Phase-2 slice.** Built on top of DEV-24/26 while both are still In Progress (human's standing "keep in progress but proceed"). **DEV-15–23 Done; DEV-24/25/26 In Progress (review).**
-- **Next action**: Human: (1) **replace the revoked `OPENAI_API_KEY`** (still 401 — blocks all live E2E of DEV-22/24/25/26), (2) review DEV-24/25/26 and mark Done. Then Phase 3: read `plan-phase-3.md`; first slice **DEV-27 (Script generation — GPT-4.1-mini → 15-sec product review scripts)**. Deferred: DEV-60 (PostHog onboarding events, Phase 8).
+- **Active phase**: **Phase 2.5 — Coverage & Asset Foundation** (`plan-phase-2-5.md`) — new phase inserted between Phase 2 and Phase 3 at human request (2026-07-17). **Phase 2 (Visual Generation Core) fully COMPLETE — all 13 slices Done** (human approved DEV-24/25/26 → Done on 2026-07-17).
+- **Active plan file**: `plan-phase-2-5.md` (Phase 3 = `plan-phase-3.md` after 2.5).
+- **Linear (new 2026-07-17)**: created milestone **"Phase 2.5 — Coverage & Asset Foundation"** + all 7 slices with DAG: **DEV-61 STU-C1** (catalog+router hardening, no blockers), DEV-62 STU-C3 (media library), DEV-63 STU-C6 (seasonal/industry data), DEV-64 STU-C7 (presenter library) — all blocker-free; DEV-65 STU-C2 (text-graphic ⭐, blocked by C1); DEV-66 STU-C4 (before/after composite, blocked by C3); DEV-67 STU-C5 (carousel kits, blocked by C2). New `phase-2.5` Linear label.
+- **Current sub-task**: **STU-C1 (DEV-61)** — implemented + tested this session (2026-07-17), left **In Progress** for human review. First Phase-2.5 slice.
+- **Next action**: Human: review **STU-C1 (DEV-61)** → mark Done. Then next unblocked slices: **STU-C3 (DEV-62)**, **STU-C6 (DEV-63)**, **STU-C7 (DEV-64)** (all blocker-free); **STU-C2 (DEV-65)** unblocked once C1 is Done. ⚠️ **Confirm the `social_graphic` model repoint** (below). Carried: replace revoked `OPENAI_API_KEY` if still 401. Phase 3 first slice remains DEV-27 (script generation). Deferred: DEV-60 (PostHog onboarding events, Phase 8).
+- **STU-C1 decisions (flag for reviewer)**: repointed two dead `social_graphic` models — `standard` `flux-schnell`→`nano-banana-2` (flux-schnell POST-404 **dead** per canary though still catalog-listed) and `premium` `seedream-v4`→`nano-banana-pro` (seedream-v4 **absent from catalog**). Both are product-ish choices made to clear real drift; confirm. Refreshed all hard-coded fallback costs to live catalog values (were badly stale, e.g. `creatify-lipsync` $0.30→$0.04). ⚠️ **Liveness ≠ completion**: the canary shows all 11 routed models "LIVE" (endpoint 422), but only `nano-banana-2` is *completion*-verified; STU-C2 must submit+poll-test `ideogram-v3-t2i`/`nano-banana-pro` before trusting them. Free-tier `resolveAvailableModel`→`nano-banana-2` shim untouched (kept).
+- **Files modified this session (STU-C1, 2026-07-17)**:
+  - `artifacts/web/src/lib/muapi-catalog.ts` (new — `MuapiCatalog`: injectable fetch/clock/ttl, ~1h in-memory cache, single-flight, stale-on-error; `tryLoad()` returns `null` on unreachable so callers distinguish offline from absent; `getModel`, `estimateCost` (lazy env key), pure `inputTypeForCategory`; `CatalogPort` seam; default `muapiCatalog` singleton)
+  - `artifacts/web/src/lib/muapi-catalog.test.ts` (new — 7 tests: inputType mapping, parse, cache-within-TTL/refetch-after, stale-on-error, null-when-unreachable, getModel present/absent)
+  - `artifacts/web/src/lib/model-router.ts` (amended — added `inputType` per routing entry; new async `resolveWithCatalog` = live cost override + live inputType + **fail-loud on catalog-absent**, silent static fallback offline; `route()` kept pure/sync for the hot path; `ResolvedRoute`; constructor takes injectable `CatalogPort`; repointed `social_graphic` standard→`nano-banana-2`, premium→`nano-banana-pro`; refreshed stale fallback costs)
+  - `artifacts/web/src/lib/model-router.test.ts` (amended — +4 tests: inputType-per-entry, resolveWithCatalog override/fail-loud/offline-fallback; updated seedream-v4/flux-schnell/cost assertions; stub `CatalogPort`)
+  - `artifacts/web/src/lib/social-graphic.test.ts` (comment only — flux-schnell→nano-banana-2 note)
+  - `artifacts/web/scripts/muapi-canary.ts` (new — `pnpm canary:muapi`: POST-probes every routed model, cross-checks catalog presence, `404` dead/`422`/`400` live, exits non-zero on drift/dead)
+  - `artifacts/web/package.json` (added `canary:muapi` script)
+  - `CONTEXT.md` (added **Model Catalog**, **Input Type**, **Liveness Canary** glossary entries; refreshed **Model Router** example slugs)
+  - `.agents/memory/muapi-api-contract.md` (added STU-C1 note: canary + the three availability tiers — catalog presence ≠ endpoint liveness ≠ completion)
 - **UI work**: no this slice (services); README updated (last-slice-of-phase rule)
 - **Phase-2 complete**: Plan (DEV-20) → Retrieve (DEV-16/17) → Route (DEV-18) → Execute (DEV-19/21/22) → Assemble (DEV-23) → UI+Queue (DEV-24) → Gallery (DEV-26) → **Evals/feedback loops (DEV-25)**. The full Agent Loop runs end to end (mock media on free tier / pending OpenAI key).
 - **🔑 BLOCKER — OpenAI key revoked (found 2026-07-13):** `OPENAI_API_KEY` in `artifacts/web/.env.local` returns 401 directly from OpenAI's API (it worked 2026-07-09 for the DEV-17/DEV-20 live smokes). Until replaced: onboarding auto-embedding fails (non-fatal, logged), and the content planner / retrieval / text generation fail at runtime. DEV-22's live smoke was blocked by this — its logic is fully unit-tested and uses the exact `generateObject` pattern verified live in DEV-20. **Human action: issue a new key and update `.env.local`.**
-- **⚠️ Muapi model-availability (DEV-8), shimmed in ONE place:** only `nano-banana-2` works on this free/sandbox key. Workaround: `src/lib/muapi-availability.ts` → `resolveAvailableModel()` (shared by product-photo + social-graphic). TODO-marked — delete on key upgrade. Free-tier generations return mock output at $0.
+- **✅ Muapi free-tier shim RESTORED (2026-07-16, reverted a bad change):** a prior working-tree change had DELETED `muapi-availability.ts` / `resolveAvailableModel` and the `resolveModel` seams, on the false claim the key was "upgraded and all models verified." **Live re-testing proved that false** — only `nano-banana-2` completes; `sdxl-image` and `google-imagen4-fast` return `failed`/`Model not found`, `flux-schnell` 404s, and `ai-product-shot` is Image-to-Image (422 without an input image). This made every content-plan item show **failed**. Fix: restored the shim + call sites + routing table to committed HEAD (`git checkout HEAD -- …`). Verified end-to-end: `ProductPhotoService` + `SocialGraphicService` both complete live via `nano-banana-2` → real CDN URLs. Shim must stay until slugs are individually live-verified. See `.agents/memory/muapi-api-contract.md`.
+- **ℹ️ Tracer route note:** `src/app/api/tracer/generate-image/route.ts` still hardcodes `nano-banana-2` (DEV-13 standalone tracer, not part of the routed Agent Loop) — intentionally left as-is.
 - **⚠️ Dev-server cache gotcha (hit 2026-07-13):** running `pnpm build` while the dev server is up corrupts `.next` (vendor-chunk "Cannot find module" errors, e.g. on Clerk routes). Fix: stop server → `rm -rf artifacts/web/.next` → restart. Avoid by stopping the dev server before builds.
 - **Blockers**: None.
 - **DB note (new this session)**: pgvector **enabled on Neon** (`CREATE EXTENSION vector`, v0.8.1) and `brand_embeddings` table created **via direct DDL** (drizzle-kit push needs the stripped esbuild binary — DEV-12 gap). DDL matches drizzle's generated SQL exactly (table/column/index/FK names), so a future `db:push` is a no-op. `schema.ts` remains source of truth.
@@ -157,6 +169,72 @@
 ---
 
 ## Session log
+
+### 2026-07-17 — Phase 2.5 kickoff + STU-C1: live model catalog service + Model Router hardening
+
+**Setup:**
+- Human directed: do the new `plan-phase-2-5.md` (Coverage & Asset Foundation) **before** Phase 3. Plan file was already in the repo (identical to the human's copy). Created Linear milestone + all 7 slices (DEV-61…67) with the blockedBy DAG and a `phase-2.5` label. Started STU-C1 (DEV-61).
+
+**Done (STU-C1):**
+- **Live catalog service** (`muapi-catalog.ts`): fetches `GET /api/v1/models` (public), ~1h cache, single-flight, stale-on-error, never blocks generation. `tryLoad()`→`null` on unreachable so callers separate "offline" (silent fallback) from "model absent" (fail loud). `inputTypeForCategory` maps `category`→`text`/`image`.
+- **Router hardening** (`model-router.ts`): `inputType` on every entry; `route()` stays pure/sync (hot path); new async `resolveWithCatalog()` overrides stale cost with live price, refreshes inputType, and **throws when the catalog is reachable but the routed model is gone** (the `seedream-v4` class of bug). Injectable `CatalogPort` seam.
+- **Fixed real drift found via the canary:** `social_graphic.premium` `seedream-v4` (absent from catalog) → `nano-banana-pro`; `social_graphic.standard` `flux-schnell` (POST-404 dead, still catalog-listed) → `nano-banana-2`. Refreshed all stale fallback costs to live values.
+- **Liveness canary** (`scripts/muapi-canary.ts`, `pnpm canary:muapi`): POST-probes every routed model. Final run: **all 11 routed models present + live (422)**, canary exits 0.
+- **TDD:** muapi-catalog.test (7) + model-router (+4). Feedback loop: `typecheck ✅ · lint ✅ · tests 106/106 ✅ · build ✅` (web workspace; no dev server running).
+- Docs: CONTEXT.md (3 new terms) + `.agents/memory/muapi-api-contract.md` (canary + 3 availability tiers).
+- Linear: DEV-61 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flag for reviewer):**
+- The two `social_graphic` model repoints are product-ish calls made to clear genuine drift (dead/absent models) — confirm the choices.
+- **Liveness ≠ completion:** canary "LIVE" = endpoint accepts requests (422), NOT that a full request completes. Only `nano-banana-2` is completion-verified on this key. STU-C2 (text-graphic) must submit+poll-test `ideogram-v3-t2i`/`nano-banana-pro` before trusting them — its "legible at premium tier" criterion depends on it.
+- `resolveWithCatalog` is added but **not yet wired into the generation pipelines** (they still call the pure `route()` + shim). Wiring the live cost/fail-loud into `/api/plan` estimates is a natural follow-up; kept out of STU-C1 to stay in scope.
+
+**Tech debt observed:** routing table still lists intended slugs behind the `nano-banana-2` shim; `MODULE_TYPELESS_PACKAGE_JSON` warning on `node --test`/canary (cosmetic — no `"type":"module"`). Carried: OpenAI key (if still 401), esbuild `db:push` gap, free-tier shim.
+
+**Next:** STU-C3/C6/C7 are blocker-free; STU-C2 unblocks when C1 is marked Done.
+
+### 2026-07-16 — Bugfix: content-plan items showing "failed" → restored the Muapi `nano-banana-2` shim
+- **Symptom:** user reported generated items in the content plan showing **failed**. Pipeline logs showed two distinct Muapi errors: `product_photo`/`ai-product-shot` → **422** (`scene_description` + `image_url` required), and `social_graphic`/`sdxl-image` → prediction **failed** `"Model not found."`.
+- **Root cause:** an uncommitted working-tree change (this session) had deleted `muapi-availability.ts` and the `resolveModel` seams in `product-photo.ts`/`social-graphic.ts`, and repointed `social_graphic` to `sdxl-image`/`google-imagen4-fast` — all on the claim the key was "upgraded 2026-07-16 and every model live-POST-verified." **That claim was false.**
+- **Diagnosis:** fetched the live catalog (`GET /api/v1/models`, 474 models) and live submit+poll–probed the text-to-image candidates. Result: **only `nano-banana-2` completes.** `sdxl-image` → `Model not found`; `google-imagen4-fast` → `Internal Error`; `flux-schnell` → POST 404; `ai-product-shot` is Image-to-Image (needs an input image). Catalog presence ≠ availability.
+- **Fix:** backed up the bad diff to scratchpad, then `git checkout HEAD --` on `model-router.ts` + `.test.ts`, `product-photo.ts` + `.test.ts`, `social-graphic.ts` + `.test.ts`, and restored deleted `muapi-availability.ts`. The shim routes every model → `nano-banana-2`.
+- **Verified:** `tsc --noEmit` clean; 20 unit tests pass (router/product-photo/social-graphic); **live end-to-end** — ran the real `ProductPhotoService` + `SocialGraphicService` against the live API with a stubbed retriever: both completed via `nano-banana-2` → real `cdn.muapi.ai` URLs. Dev server restarted, no route errors.
+- **Also:** unrelated `.next` vendor-chunk error on `/sign-in` earlier this session — cleared `artifacts/web/.next` and restarted (same known cache gotcha).
+- **Memory:** updated `.agents/memory/muapi-api-contract.md` with the live-verified served-model list and a "do not delete the shim without live-testing slugs" warning.
+- **Tech debt observed:** `model-router.ts` header comment + the deleted-in-error edits referenced a memory file `muapi-dead-catalog-endpoints.md` that never existed. Routing table still lists aspirational slugs (intended design) — fine, since the shim collapses them; revisit only when the key genuinely serves more models.
+
+### 2026-07-16 — Maintenance: Muapi key upgraded → deleted the free-tier `nano-banana-2` shim (⚠️ REVERTED — see entry above; the premise was false)
+
+**Done:**
+- **Human upgraded the Muapi key.** Confirmed the new key is in `artifacts/web/.env.local` (ends `…f134dc`, was `…868441`) and re-POST-probed all 12 routing-table slugs on it — all live (422).
+- **Executed the long-standing `TODO(muapi-key)`:** deleted `src/lib/muapi-availability.ts` (`resolveAvailableModel`, the shim that forced every routed model to `nano-banana-2` for $0 mock output) and removed the `resolveModel` injectable seam it fed — config option, field, constructor default, and all `this.resolveModel(...)` call sites — from `product-photo.ts` (3 sites) and `social-graphic.ts` (1 site). The Model Router's real models now flow through untouched.
+- Updated the `model-router.ts` header caveat, and both test files (removed the shim-specific test + `resolveAvailableModel` import; the "override → nano-banana-2" assertions now expect the real routed models: `ai-product-shot` for product_photo/standard, `sdxl-image` for social_graphic/standard).
+- Left the DEV-13 tracer route (`api/tracer/generate-image`) hardcoding `nano-banana-2` alone — it's a standalone tracer, not part of the routed Agent Loop.
+
+**Result:** `typecheck ✅` · `lint ✅ (web)` · `tests ✅ (95/95 — was 96, one shim test removed)` · `build ✅ (web workspace)`. Root `pnpm build` still fails only in the unrelated `mockup-sandbox` workspace (missing `@rollup/rollup-darwin-x64` native binary — pre-existing env issue).
+
+**Reviewer note — behavioral change:** generations no longer return $0 mock output; they now call the real paid Muapi models per the routing table. Product-photo → `ai-product-shot`/`ai-product-photography`; social-graphic → `sdxl-image`/`google-imagen4-fast`; plus the kling/creatify/reframe models. Worth a live end-to-end generation to confirm real media comes back (not done here — empty-body probes prove the endpoints are live, not that full-param generation succeeds).
+
+**Files modified:** deleted `artifacts/web/src/lib/muapi-availability.ts`; edited `artifacts/web/src/lib/product-photo.ts`, `social-graphic.ts`, `model-router.ts`, `product-photo.test.ts`, `social-graphic.test.ts`.
+
+---
+
+### 2026-07-16 — Maintenance: repoint dead Muapi social-graphic models (live POST-probe)
+
+**Done:**
+- **Audited every Muapi model slug the code names** (11 in `ROUTING_TABLE` + `nano-banana-2` in the tracer route / availability shim) by POST-probing each with an empty `{}` body against `https://api.muapi.ai/api/v1/<model>` (x-api-key header). Convention: `404` = dead, `422`/`400` = live (missing params, endpoint exists).
+- **Result — 2 dead, both in the `social_graphic` entry:** `flux-schnell` (standard) and `seedream-v4` (premium) → 404. The other 10 (`ai-product-shot`, `ai-product-photography`, `kling-v2.1-standard-i2v`, `kling-v2.1-pro-i2v`, `creatify-lipsync`, `kling-v1-avatar-pro`, `ai-background-remover`, `ideogram-v3-reframe`, `luma-flash-reframe`, `nano-banana-2`) all live (422).
+- **Note:** the other dead slugs in the hotfix mapping (`hidream-i1-full`, `mmaudio-v2-text-to-audio`, `bytedance-seedream-v4-edit`) are **not present in code** — only in `ARCHITECTURE.md`/plan docs — so no code change needed for them.
+- **Fix:** `model-router.ts` → `social_graphic.standard` = `sdxl-image` ($0.004, was flux-schnell $0.03); `social_graphic.premium` = `google-imagen4-fast` ($0.02, was seedream-v4 $0.05). Both replacements POST-probed live (422). `seedream-v4` wasn't in the supplied mapping (that mapping's `bytedance-seedream-v4-edit → nano-banana-edit` is a different image-*edit* slug) — human chose `google-imagen4-fast` for the premium slot.
+- Updated `model-router.test.ts` (slug + cost assertions) and the stale example comment in `muapi-availability.ts`.
+
+**Result:** `typecheck ✅` · `lint ✅ (web)` · `model-router tests ✅ (8/8)` · `build ✅ (web workspace)`. Root `pnpm build` fails only in the unrelated `mockup-sandbox` workspace (missing `@rollup/rollup-darwin-x64` native binary — pre-existing machine/env issue, untouched by this change).
+
+**Reviewer note:** the free-tier `resolveAvailableModel` shim still maps everything to `nano-banana-2`, so these new slugs only take effect once the Muapi key is upgraded. The routing table now reflects live endpoints regardless.
+
+**Files modified:** `artifacts/web/src/lib/model-router.ts`, `artifacts/web/src/lib/model-router.test.ts`, `artifacts/web/src/lib/muapi-availability.ts` (comment only).
+
+---
 
 ### 2026-07-16 — QA fix (DEV-24): Generation Queue lost-update race + OpenAI key live
 

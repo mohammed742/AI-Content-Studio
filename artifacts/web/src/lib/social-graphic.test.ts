@@ -104,7 +104,7 @@ test("routes social_graphic through the free-tier override to nano-banana-2", as
 
   const result = await service.generate(request());
 
-  // Router returns flux-schnell for social_graphic/standard → override maps it.
+  // Router returns nano-banana-2 for social_graphic/standard → override keeps it.
   assert.equal(result.model, "nano-banana-2");
   assert.equal(muapi.calls[0].model, "nano-banana-2");
 });
