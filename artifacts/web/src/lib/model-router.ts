@@ -33,6 +33,7 @@ export type { InputType } from "./muapi-catalog.ts";
 export type AssetType =
   | "product_photo"
   | "social_graphic"
+  | "text_graphic"
   | "video_animate"
   | "ugc_lipsync"
   | "background_removal"
@@ -85,6 +86,14 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     // repointed to `flux-krea-dev` ($0.015, canary-live 2026-07-17) — a FLUX
     // variant tuned for photographic aesthetics, cheaper than nano-banana-pro.
     premium: { model: "flux-krea-dev", estimatedCost: 0.015 },
+  },
+  text_graphic: {
+    inputType: "text", // Text to Image
+    // STU-C2: text-heavy graphics (specials/schedules/quotes) the general
+    // image models render illegibly. Dedicated text-rendering specialists,
+    // both live-catalog-verified 2026-07-17 (costs match the live catalog).
+    standard: { model: "ideogram-v3-t2i", estimatedCost: 0.02 },
+    premium: { model: "nano-banana-pro", estimatedCost: 0.12 },
   },
   video_animate: {
     inputType: "image", // kling i2v is Image to Video

@@ -61,6 +61,17 @@ test("premium tier selects the premium model when one exists", () => {
   assert.equal(router.route("reframe", "premium").model, "luma-flash-reframe");
 });
 
+test("text_graphic routes to text-rendering specialists with text inputType", () => {
+  const router = new ModelRouter();
+  const standard = router.route("text_graphic", "standard");
+  const premium = router.route("text_graphic", "premium");
+  assert.equal(standard.model, "ideogram-v3-t2i");
+  assert.equal(standard.estimatedCost, 0.02);
+  assert.equal(premium.model, "nano-banana-pro");
+  assert.equal(premium.estimatedCost, 0.12);
+  assert.equal(standard.inputType, "text");
+});
+
 test("premium falls back to standard when there is no premium model", () => {
   const router = new ModelRouter();
   const standard = router.route("background_removal", "standard");

@@ -7,9 +7,15 @@
 - **Active phase**: **Phase 2.5 — Coverage & Asset Foundation** (`plan-phase-2-5.md`) — new phase inserted between Phase 2 and Phase 3 at human request (2026-07-17). **Phase 2 (Visual Generation Core) fully COMPLETE — all 13 slices Done** (human approved DEV-24/25/26 → Done on 2026-07-17).
 - **Active plan file**: `plan-phase-2-5.md` (Phase 3 = `plan-phase-3.md` after 2.5).
 - **Linear (new 2026-07-17)**: created milestone **"Phase 2.5 — Coverage & Asset Foundation"** + all 7 slices with DAG: **DEV-61 STU-C1** (catalog+router hardening, no blockers), DEV-62 STU-C3 (media library), DEV-63 STU-C6 (seasonal/industry data), DEV-64 STU-C7 (presenter library) — all blocker-free; DEV-65 STU-C2 (text-graphic ⭐, blocked by C1); DEV-66 STU-C4 (before/after composite, blocked by C3); DEV-67 STU-C5 (carousel kits, blocked by C2). New `phase-2.5` Linear label.
-- **Current sub-task**: **STU-C1 (DEV-61)** — **reviewed + marked Done** (2026-07-18). Independent review verified all in-scope acceptance criteria against current code + the live Muapi catalog; `tests 106/106 ✅ · typecheck ✅`; no code changed during review itself. First Phase-2.5 slice complete. **Post-review tweak:** `social_graphic.premium` repointed `nano-banana-pro`→`flux-krea-dev` ($0.015, cheaper photographic FLUX variant) + test updated — still pending human confirm.
-- **Next action**: Next unblocked slices: **STU-C2 (DEV-65)** (now unblocked — C1 Done), **STU-C3 (DEV-62)**, **STU-C6 (DEV-63)**, **STU-C7 (DEV-64)** (all blocker-free). ⚠️ **Confirm the `social_graphic` model repoint** (below). Carried: replace revoked `OPENAI_API_KEY` if still 401. Phase 3 first slice remains DEV-27 (script generation). Deferred: DEV-60 (PostHog onboarding events, Phase 8).
+- **Current sub-task**: **STU-C2 (DEV-65)** — **implemented + tested this session (2026-07-18)**, left **In Progress** for human review. Added a `text_graphic` Asset Type + text-graphic generation pipeline (legible-copy graphics). `typecheck ✅ · tests 114/114 ✅ · lint ✅`. Canary confirms `ideogram-v3-t2i` + `nano-banana-pro` both LIVE. Prior slice STU-C1 (DEV-61) Done.
+- **Next action**: Human: review **STU-C2 (DEV-65)** → mark Done. Then next unblocked slices: **STU-C3 (DEV-62)**, **STU-C6 (DEV-63)**, **STU-C7 (DEV-64)** (all blocker-free); **STU-C5 (DEV-67)** unblocks once C2 is Done. ⚠️ **Completion-gated**: text-graphic legibility at premium tier (`nano-banana-pro`) can only be verified once the key serves more than `nano-banana-2` — endpoints are live, but the free-tier shim still collapses generation to `nano-banana-2`. ⚠️ Also still open: confirm the STU-C1 `social_graphic.premium`→`flux-krea-dev` repoint. Carried: replace revoked `OPENAI_API_KEY` if still 401. Phase 3 first slice remains DEV-27. Deferred: DEV-60 (PostHog onboarding events, Phase 8).
 - **STU-C1 decisions (flag for reviewer)**: repointed two dead `social_graphic` models — `standard` `flux-schnell`→`nano-banana-2` (flux-schnell POST-404 **dead** per canary though still catalog-listed) and `premium` `seedream-v4`→**`flux-krea-dev`** ($0.015, canary-live 2026-07-17 — FLUX variant tuned for photographic aesthetics, cheaper than nano-banana-pro; supersedes the earlier `nano-banana-pro` repoint, seedream-v4 was **absent from catalog**). Both are product-ish choices made to clear real drift; confirm. Refreshed all hard-coded fallback costs to live catalog values (were badly stale, e.g. `creatify-lipsync` $0.30→$0.04). ⚠️ **Liveness ≠ completion**: the canary shows all 11 routed models "LIVE" (endpoint 422), but only `nano-banana-2` is *completion*-verified; STU-C2 must submit+poll-test `ideogram-v3-t2i`/`flux-krea-dev` before trusting them. Free-tier `resolveAvailableModel`→`nano-banana-2` shim untouched (kept).
+- **Files modified this session (STU-C2, 2026-07-18)**:
+  - `artifacts/web/src/lib/model-router.ts` (amended — added `text_graphic` Asset Type + routing entry: standard `ideogram-v3-t2i` $0.02, premium `nano-banana-pro` $0.12, `inputType: "text"`; costs match the live catalog verified this session)
+  - `artifacts/web/src/lib/model-router.test.ts` (amended — +1 test: `text_graphic` resolves to the text specialists + `text` inputType)
+  - `artifacts/web/src/lib/text-graphic.ts` (new — `TextGraphicService.generate`: RAG retrieve → prompt that quotes the **exact** display text with legibility/layout guidance → route `text_graphic` → Muapi at format aspect ratio; reuses social-graphic's shared graphic types [`GraphicBusinessContext`/`GraphicFormat`/`FORMAT_ASPECT_RATIOS`/`MuapiGenerate`/`GraphicRetriever`] to keep aspect ratios single-sourced; pure `buildTextGraphicQuery`/`buildTextGraphicPrompt`; injectable Muapi/retriever/resolveModel seams; free-tier shim collapses to `nano-banana-2` like the siblings)
+  - `artifacts/web/src/lib/text-graphic.test.ts` (new — 7 tests: query/prompt builders [exact text quoted + legibility guidance], default+per-format aspect ratio, free-tier override→nano-banana-2, premium→nano-banana-pro pre-shim, RAG context injection, failure propagation)
+  - `CONTEXT.md` (added **Text-Graphic** glossary term; added `text_graphic` to the **Asset Type** canonical values)
 - **Files modified this session (STU-C1, 2026-07-17)**:
   - `artifacts/web/src/lib/muapi-catalog.ts` (new — `MuapiCatalog`: injectable fetch/clock/ttl, ~1h in-memory cache, single-flight, stale-on-error; `tryLoad()` returns `null` on unreachable so callers distinguish offline from absent; `getModel`, `estimateCost` (lazy env key), pure `inputTypeForCategory`; `CatalogPort` seam; default `muapiCatalog` singleton)
   - `artifacts/web/src/lib/muapi-catalog.test.ts` (new — 7 tests: inputType mapping, parse, cache-within-TTL/refetch-after, stale-on-error, null-when-unreachable, getModel present/absent)
@@ -169,6 +175,25 @@
 ---
 
 ## Session log
+
+### 2026-07-18 — STU-C2 (DEV-65): text-graphic asset type + pipeline
+
+**Done:**
+- **New `text_graphic` Asset Type** in the Model Router (snake_case, matching `social_graphic`): standard `ideogram-v3-t2i` ($0.02, text-rendering specialist), premium `nano-banana-pro` ($0.12, best-in-class text), `inputType: "text"`. Fetched the live catalog first — both models present, category "Text to Image", costs match exactly.
+- **Blocker-risk gate cleared:** ran `pnpm canary:muapi` — all 13 routed models (incl. the two new text specialists) present + LIVE (422). Endpoint liveness confirmed *before* wiring the pipeline to them.
+- **`text-graphic.ts` pipeline** (`TextGraphicService`): RAG brand context → prompt that quotes the **exact** display text (offer/schedule/quote) with legibility + layout guidance → route → generate at the format's aspect ratio. Close sibling of social-graphic; **reuses** its shared graphic types so aspect ratios stay single-sourced. Generation-only (assembly stays in the Assemble path).
+- **TDD:** text-graphic.test (7) + model-router (+1). Feedback loop: `typecheck ✅ · tests 114/114 ✅ · lint ✅` (web workspace; no dev server running).
+- Docs: CONTEXT.md (**Text-Graphic** term + `text_graphic` added to Asset Type canonical list).
+- Linear: DEV-65 → In Progress, approach note + completion comment posted; left In Progress for review.
+
+**Decisions (flag for reviewer):**
+- **File path deviation:** plan lists `src/lib/pipelines/text-graphic.ts` but no `pipelines/` dir exists — every sibling pipeline is flat in `src/lib/`. Used `src/lib/text-graphic.ts` to match convention (smallest-reversible).
+- **Legibility acceptance is completion-gated:** the "all words legible at premium tier" criterion needs a real completion on `nano-banana-pro`. Endpoints are LIVE, but the free-tier shim still collapses `text_graphic` → `nano-banana-2` at generation time, so true legibility is unverifiable until the key is upgraded. Routing/prompt/tests are all in place for when it is.
+- Kept the pipeline generation-only (no reframe/asset-kit inside it) to match social-graphic; the plan's "→ reframe → asset kit" wording is handled by the existing Assemble path / Generation Queue, not the pipeline.
+
+**Tech debt observed:** none new. Carried: free-tier `nano-banana-2` shim (blocks completion verification of all non-nano-banana-2 models incl. the new text specialists), OpenAI key (if still 401), esbuild `db:push` gap, `MODULE_TYPELESS_PACKAGE_JSON` cosmetic warning. STU-C1 `flux-krea-dev` repoint still pending human confirm.
+
+**Next:** STU-C3/C6/C7 blocker-free; STU-C5 (DEV-67) unblocks when C2 is marked Done.
 
 ### 2026-07-18 — Review + sign-off: STU-C1 (DEV-61) → Done
 
