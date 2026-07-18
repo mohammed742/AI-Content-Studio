@@ -83,6 +83,11 @@ export type MediaUploader = (
 export type MediaSaver = (values: InsertMediaLibraryItem) => Promise<MediaLibraryItem>;
 /** List a user's library, newest first. Injectable. */
 export type MediaLister = (userId: string) => Promise<MediaLibraryItem[]>;
+/** Fetch specific items owned by the user (ownership-scoped). Injectable. */
+export type MediaOwnedGetter = (
+  userId: string,
+  ids: string[],
+) => Promise<MediaLibraryItem[]>;
 /** Ownership-scoped delete; returns whether a row was removed. Injectable. */
 export type MediaRemover = (userId: string, id: string) => Promise<boolean>;
 
@@ -96,6 +101,7 @@ export interface MediaLibraryServiceConfig {
   upload?: MediaUploader;
   save?: MediaSaver;
   list?: MediaLister;
+  getOwned?: MediaOwnedGetter;
   remove?: MediaRemover;
   now?: () => number;
 }
@@ -104,6 +110,7 @@ export class MediaLibraryService {
   private readonly upload: MediaUploader;
   private readonly save: MediaSaver;
   private readonly lister: MediaLister;
+  private readonly ownedGetter: MediaOwnedGetter;
   private readonly remover: MediaRemover;
   private readonly now: () => number;
 
@@ -111,6 +118,7 @@ export class MediaLibraryService {
     this.upload = config.upload ?? defaultUpload;
     this.save = config.save ?? defaultSave;
     this.lister = config.list ?? defaultList;
+    this.ownedGetter = config.getOwned ?? defaultGetOwned;
     this.remover = config.remove ?? defaultRemove;
     this.now = config.now ?? (() => Date.now());
   }
@@ -141,6 +149,19 @@ export class MediaLibraryService {
   /** A user's library, newest first — the source for pipeline image pickers. */
   list(userId: string): Promise<MediaLibraryItem[]> {
     return this.lister(userId);
+  }
+
+  /**
+   * Fetch specific library items the user owns — used by image-to-image
+   * pipelines (e.g. before/after in STU-C4) to resolve selected photo ids to
+   * their URLs. Ownership-scoped: ids belonging to another user are dropped,
+   * so a caller can only ever composite its own photos.
+   */
+  getOwned(userId: string, ids: string[]): Promise<MediaLibraryItem[]> {
+    if (ids.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.ownedGetter(userId, ids);
   }
 
   /** Delete one of the user's own items. Returns false if nothing was removed. */
@@ -177,6 +198,19 @@ const defaultList: MediaLister = async (userId) => {
     .from(mediaLibrary)
     .where(eq(mediaLibrary.userId, userId))
     .orderBy(desc(mediaLibrary.createdAt));
+};
+
+/** Default owned-getter — the user's rows among the requested ids. */
+const defaultGetOwned: MediaOwnedGetter = async (userId, ids) => {
+  const [{ db }, { mediaLibrary }, { and, eq, inArray }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  return db
+    .select()
+    .from(mediaLibrary)
+    .where(and(eq(mediaLibrary.userId, userId), inArray(mediaLibrary.id, ids)));
 };
 
 /** Default remover — ownership-scoped delete (userId + id must both match). */

@@ -17,6 +17,7 @@ import {
   type MediaUploader,
   type MediaSaver,
   type MediaLister,
+  type MediaOwnedGetter,
   type MediaRemover,
 } from "./media-library.ts";
 import type { MediaLibraryItem } from "@/db/schema";
@@ -141,4 +142,26 @@ test("remove is ownership-scoped (passes both userId and id)", async () => {
   const ok = await service.remove("user-1", "m1");
   assert.equal(ok, true);
   assert.deepEqual(seen, [{ userId: "user-1", id: "m1" }]);
+});
+
+test("getOwned is ownership-scoped and short-circuits an empty id list", async () => {
+  const seen: Array<{ userId: string; ids: string[] }> = [];
+  const getOwned: MediaOwnedGetter = async (userId, ids) => {
+    seen.push({ userId, ids });
+    return ids.map(
+      (id) => ({ id, userId, mediaUrl: `https://cdn/${id}` }) as MediaLibraryItem,
+    );
+  };
+  const service = new MediaLibraryService({ getOwned });
+
+  // empty ids never hit the getter
+  assert.deepEqual(await service.getOwned("user-1", []), []);
+  assert.equal(seen.length, 0);
+
+  const items = await service.getOwned("user-1", ["a", "b"]);
+  assert.deepEqual(
+    items.map((i) => i.id),
+    ["a", "b"],
+  );
+  assert.deepEqual(seen, [{ userId: "user-1", ids: ["a", "b"] }]);
 });
