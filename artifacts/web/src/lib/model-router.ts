@@ -82,8 +82,9 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     // complete on this key (and the free-tier shim target anyway).
     standard: { model: "nano-banana-2", estimatedCost: 0.06 },
     // STU-C1: `seedream-v4` was retired from the catalog (fail-loud drift);
-    // repointed to `nano-banana-pro` (present + canary-live, premium quality).
-    premium: { model: "nano-banana-pro", estimatedCost: 0.12 },
+    // repointed to `flux-krea-dev` ($0.015, canary-live 2026-07-17) — a FLUX
+    // variant tuned for photographic aesthetics, cheaper than nano-banana-pro.
+    premium: { model: "flux-krea-dev", estimatedCost: 0.015 },
   },
   video_animate: {
     inputType: "image", // kling i2v is Image to Video

@@ -7,13 +7,13 @@
 - **Active phase**: **Phase 2.5 — Coverage & Asset Foundation** (`plan-phase-2-5.md`) — new phase inserted between Phase 2 and Phase 3 at human request (2026-07-17). **Phase 2 (Visual Generation Core) fully COMPLETE — all 13 slices Done** (human approved DEV-24/25/26 → Done on 2026-07-17).
 - **Active plan file**: `plan-phase-2-5.md` (Phase 3 = `plan-phase-3.md` after 2.5).
 - **Linear (new 2026-07-17)**: created milestone **"Phase 2.5 — Coverage & Asset Foundation"** + all 7 slices with DAG: **DEV-61 STU-C1** (catalog+router hardening, no blockers), DEV-62 STU-C3 (media library), DEV-63 STU-C6 (seasonal/industry data), DEV-64 STU-C7 (presenter library) — all blocker-free; DEV-65 STU-C2 (text-graphic ⭐, blocked by C1); DEV-66 STU-C4 (before/after composite, blocked by C3); DEV-67 STU-C5 (carousel kits, blocked by C2). New `phase-2.5` Linear label.
-- **Current sub-task**: **STU-C1 (DEV-61)** — implemented + tested this session (2026-07-17), left **In Progress** for human review. First Phase-2.5 slice.
-- **Next action**: Human: review **STU-C1 (DEV-61)** → mark Done. Then next unblocked slices: **STU-C3 (DEV-62)**, **STU-C6 (DEV-63)**, **STU-C7 (DEV-64)** (all blocker-free); **STU-C2 (DEV-65)** unblocked once C1 is Done. ⚠️ **Confirm the `social_graphic` model repoint** (below). Carried: replace revoked `OPENAI_API_KEY` if still 401. Phase 3 first slice remains DEV-27 (script generation). Deferred: DEV-60 (PostHog onboarding events, Phase 8).
-- **STU-C1 decisions (flag for reviewer)**: repointed two dead `social_graphic` models — `standard` `flux-schnell`→`nano-banana-2` (flux-schnell POST-404 **dead** per canary though still catalog-listed) and `premium` `seedream-v4`→`nano-banana-pro` (seedream-v4 **absent from catalog**). Both are product-ish choices made to clear real drift; confirm. Refreshed all hard-coded fallback costs to live catalog values (were badly stale, e.g. `creatify-lipsync` $0.30→$0.04). ⚠️ **Liveness ≠ completion**: the canary shows all 11 routed models "LIVE" (endpoint 422), but only `nano-banana-2` is *completion*-verified; STU-C2 must submit+poll-test `ideogram-v3-t2i`/`nano-banana-pro` before trusting them. Free-tier `resolveAvailableModel`→`nano-banana-2` shim untouched (kept).
+- **Current sub-task**: **STU-C1 (DEV-61)** — **reviewed + marked Done** (2026-07-18). Independent review verified all in-scope acceptance criteria against current code + the live Muapi catalog; `tests 106/106 ✅ · typecheck ✅`; no code changed during review itself. First Phase-2.5 slice complete. **Post-review tweak:** `social_graphic.premium` repointed `nano-banana-pro`→`flux-krea-dev` ($0.015, cheaper photographic FLUX variant) + test updated — still pending human confirm.
+- **Next action**: Next unblocked slices: **STU-C2 (DEV-65)** (now unblocked — C1 Done), **STU-C3 (DEV-62)**, **STU-C6 (DEV-63)**, **STU-C7 (DEV-64)** (all blocker-free). ⚠️ **Confirm the `social_graphic` model repoint** (below). Carried: replace revoked `OPENAI_API_KEY` if still 401. Phase 3 first slice remains DEV-27 (script generation). Deferred: DEV-60 (PostHog onboarding events, Phase 8).
+- **STU-C1 decisions (flag for reviewer)**: repointed two dead `social_graphic` models — `standard` `flux-schnell`→`nano-banana-2` (flux-schnell POST-404 **dead** per canary though still catalog-listed) and `premium` `seedream-v4`→**`flux-krea-dev`** ($0.015, canary-live 2026-07-17 — FLUX variant tuned for photographic aesthetics, cheaper than nano-banana-pro; supersedes the earlier `nano-banana-pro` repoint, seedream-v4 was **absent from catalog**). Both are product-ish choices made to clear real drift; confirm. Refreshed all hard-coded fallback costs to live catalog values (were badly stale, e.g. `creatify-lipsync` $0.30→$0.04). ⚠️ **Liveness ≠ completion**: the canary shows all 11 routed models "LIVE" (endpoint 422), but only `nano-banana-2` is *completion*-verified; STU-C2 must submit+poll-test `ideogram-v3-t2i`/`flux-krea-dev` before trusting them. Free-tier `resolveAvailableModel`→`nano-banana-2` shim untouched (kept).
 - **Files modified this session (STU-C1, 2026-07-17)**:
   - `artifacts/web/src/lib/muapi-catalog.ts` (new — `MuapiCatalog`: injectable fetch/clock/ttl, ~1h in-memory cache, single-flight, stale-on-error; `tryLoad()` returns `null` on unreachable so callers distinguish offline from absent; `getModel`, `estimateCost` (lazy env key), pure `inputTypeForCategory`; `CatalogPort` seam; default `muapiCatalog` singleton)
   - `artifacts/web/src/lib/muapi-catalog.test.ts` (new — 7 tests: inputType mapping, parse, cache-within-TTL/refetch-after, stale-on-error, null-when-unreachable, getModel present/absent)
-  - `artifacts/web/src/lib/model-router.ts` (amended — added `inputType` per routing entry; new async `resolveWithCatalog` = live cost override + live inputType + **fail-loud on catalog-absent**, silent static fallback offline; `route()` kept pure/sync for the hot path; `ResolvedRoute`; constructor takes injectable `CatalogPort`; repointed `social_graphic` standard→`nano-banana-2`, premium→`nano-banana-pro`; refreshed stale fallback costs)
+  - `artifacts/web/src/lib/model-router.ts` (amended — added `inputType` per routing entry; new async `resolveWithCatalog` = live cost override + live inputType + **fail-loud on catalog-absent**, silent static fallback offline; `route()` kept pure/sync for the hot path; `ResolvedRoute`; constructor takes injectable `CatalogPort`; repointed `social_graphic` standard→`nano-banana-2`, premium→`flux-krea-dev` (post-review update, superseded `nano-banana-pro`); refreshed stale fallback costs)
   - `artifacts/web/src/lib/model-router.test.ts` (amended — +4 tests: inputType-per-entry, resolveWithCatalog override/fail-loud/offline-fallback; updated seedream-v4/flux-schnell/cost assertions; stub `CatalogPort`)
   - `artifacts/web/src/lib/social-graphic.test.ts` (comment only — flux-schnell→nano-banana-2 note)
   - `artifacts/web/scripts/muapi-canary.ts` (new — `pnpm canary:muapi`: POST-probes every routed model, cross-checks catalog presence, `404` dead/`422`/`400` live, exits non-zero on drift/dead)
@@ -169,6 +169,25 @@
 ---
 
 ## Session log
+
+### 2026-07-18 — Review + sign-off: STU-C1 (DEV-61) → Done
+
+**Reviewed (fresh session, did not build it):**
+- Turned the STU-C1 acceptance criteria into a QA checklist and verified each against the **current** code (not the session-log claims):
+  - **Fail-loud on catalog drift** — `resolveWithCatalog` throws when the catalog is reachable but the routed model is absent (`model-router.ts`); tested. ✅
+  - **Live price override + offline fallback** — live cost overrides the static value when reachable, silent static fallback (`live:false`) when unreachable; both paths tested. ✅
+  - **`inputType` on every routing entry** — all 6 entries; enforced by `Record<AssetType,…>`. ✅ (UI consumption is STU-C2's scope.)
+- **Independent verification:** `tests 106/106 ✅ · typecheck ✅` run locally. Fetched the **live** `GET /api/v1/models` (476 models) and confirmed: the parser's `{ models: [...] }` shape is correct; `seedream-v4` is genuinely ABSENT (justifies the `nano-banana-pro` repoint); `nano-banana-2`/`nano-banana-pro`/`ai-product-shot`/`ai-product-photography` all present with categories + costs **matching** the routing table's fallbacks and inputTypes. The two flagged repoint decisions check out.
+- **No code changed** — nothing failed or was broken (review rule: fix only what's broken).
+
+**Observations logged (non-blocking, by-design — not fixed):**
+- `resolveWithCatalog` is built + tested but **not yet wired** into any pipeline/API — AC #1/#2 provide capability, not live enforcement yet. Natural follow-up: wire into `/api/plan` cost estimates.
+- "Catalog up but empty" (`{models:[]}`) would fail loud like "model absent" rather than falling back — harmless today (nothing on a live path); add a guard when wiring in.
+- Canary POSTs `{}` with the API key — for a submit-then-poll API a model accepting `{}` could start a billable job; by-design per the plan (models require params → 422).
+
+**Linear:** DEV-61 → **Done** (`completedAt` 2026-07-18). Unblocks **STU-C2 (DEV-65)**.
+
+**Next:** STU-C2/C3/C6/C7 all available (C2 unblocked by this sign-off; C3/C6/C7 blocker-free).
 
 ### 2026-07-17 — Phase 2.5 kickoff + STU-C1: live model catalog service + Model Router hardening
 

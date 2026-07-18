@@ -53,7 +53,7 @@ test("defaults to the standard tier", () => {
 
 test("premium tier selects the premium model when one exists", () => {
   const router = new ModelRouter();
-  assert.equal(router.route("social_graphic", "premium").model, "nano-banana-pro");
+  assert.equal(router.route("social_graphic", "premium").model, "flux-krea-dev");
   assert.equal(
     router.route("product_photo", "premium").model,
     "ai-product-photography",
