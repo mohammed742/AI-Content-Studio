@@ -247,6 +247,42 @@ export const assetKits = pgTable(
 export type AssetKit = typeof assetKits.$inferSelect;
 export type InsertAssetKit = typeof assetKits.$inferInsert;
 
+// STU-C3 (DEV-62): Media Library (CONTEXT.md) — a user's own uploaded business
+// photos, so image-to-image pipelines (product photo, before/after) have real
+// source material. `source` distinguishes user uploads from media the app
+// generated back into the library.
+export const MEDIA_LIBRARY_SOURCES = ["upload", "generated"] as const;
+export type MediaLibrarySource = (typeof MEDIA_LIBRARY_SOURCES)[number];
+
+export const mediaLibrary = pgTable(
+  "media_library",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // R2 object key (the durable storage location) + its public URL.
+    r2Key: text("r2_key").notNull(),
+    mediaUrl: text("media_url").notNull(),
+    // MIME type of the stored file (e.g. image/png).
+    contentType: text("content_type").notNull(),
+    // Optional user-supplied caption/label for the photo.
+    label: text("label"),
+    source: text("source", { enum: MEDIA_LIBRARY_SOURCES })
+      .notNull()
+      .default("upload"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("media_library_user_id_idx").on(table.userId)],
+);
+
+export type MediaLibraryItem = typeof mediaLibrary.$inferSelect;
+export type InsertMediaLibraryItem = typeof mediaLibrary.$inferInsert;
+
 // DEV-24: Content Plan (CONTEXT.md) — a proposed set of 5-7 content items for
 // a week. Items live as jsonb on the plan row (an item is meaningless outside
 // its plan); each carries its own generation status + resulting Asset Kit id.

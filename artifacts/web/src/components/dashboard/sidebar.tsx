@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Calendar,
   Image,
+  FolderOpen,
   Settings,
   ListChecks,
   ChevronLeft,
@@ -40,6 +41,11 @@ const navItems = [
     label: "Gallery",
     href: "/gallery",
     icon: Image,
+  },
+  {
+    label: "Media Library",
+    href: "/library",
+    icon: FolderOpen,
   },
   {
     label: "Settings",

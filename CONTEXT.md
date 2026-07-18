@@ -13,6 +13,7 @@
 | **Brand Kit** | The visual and verbal identity: colors (hex codes), tone (`professional` / `casual` / `playful` / `luxury`), logo URL, font preferences. Extracted from onboarding + logo upload. |
 | **Content Calendar** | Auto-generated weekly/monthly schedule of planned content. Each slot specifies: date, time, platform, content type, and associated Asset Kit. |
 | **Asset Kit** | A complete, ready-to-publish content unit: image or video + caption + hashtags + platform metadata. The atomic output of the generation pipeline. |
+| **Media Library** | A user's own uploaded business photos (storefront, products, team), stored in R2 and recorded in `media_library` (`src/lib/media-library.ts`, STU-C3). `source` = `upload` (user) or `generated` (app-produced). Provides real source material for image-to-image pipelines — the product-photo "upload" step and the before/after composite (STU-C4) — instead of relying only on text-to-image generation. Distinct from the **Gallery**, which shows generated Asset Kits. |
 | **Content Slot** | A single position in the Content Calendar (e.g., "Monday 10am Instagram Post"). Gets filled with an Asset Kit. |
 | **Content Type** | Category of content: `product_showcase`, `tip`, `behind_the_scenes`, `promo`, `testimonial`, `ugc_ad`, `seasonal`, `engagement`. |
 | **Industry Template** | Pre-configured generation settings per Business Type. E.g., restaurant template emphasizes food photography + daily specials; gym template emphasizes motivational graphics + class promos. |

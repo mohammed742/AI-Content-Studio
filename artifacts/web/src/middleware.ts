@@ -6,6 +6,7 @@ const isProtectedRoute = createRouteMatcher([
   "/onboarding(.*)",
   "/plan(.*)",
   "/gallery(.*)",
+  "/library(.*)",
 ]);
 const isWebhookRoute = createRouteMatcher([
   "/api/webhooks(.*)",
