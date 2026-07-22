@@ -5,7 +5,7 @@
  * type badge (top-left), platform (top-right), date + one-tap thumbs
  * (bottom). Filled thumb = current rating. Click opens the lightbox.
  */
-import { ThumbsUp, ThumbsDown, PlayCircle } from "lucide-react";
+import { ThumbsUp, ThumbsDown, PlayCircle, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/lib/gallery";
 import type { FeedbackRating } from "@/db/schema";
@@ -34,6 +34,8 @@ export function GalleryCard({
     month: "short",
     day: "numeric",
   });
+  const frameCount = item.media?.length ?? 0;
+  const isCarousel = frameCount > 1;
 
   return (
     <div className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card">
@@ -56,6 +58,14 @@ export function GalleryCard({
           className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 text-white/90"
           strokeWidth={1.5}
         />
+      )}
+
+      {/* Carousel indicator — persistent so multi-image kits read at a glance. */}
+      {isCarousel && (
+        <span className="pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
+          <Layers className="h-3 w-3" strokeWidth={1.5} />
+          {frameCount}
+        </span>
       )}
 
       {/* Hover overlay */}

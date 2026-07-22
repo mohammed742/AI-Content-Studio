@@ -4,7 +4,7 @@
  * rating logic unit-test without a request or DB (the Drizzle queries live in
  * the API route and use these).
  */
-import type { AssetKit, FeedbackRating, MediaType } from "@/db/schema";
+import type { AssetKit, AssetKitMedia, FeedbackRating, MediaType } from "@/db/schema";
 
 /** An Asset Kit as returned by GET /api/gallery (dates serialized to strings). */
 export interface GalleryItem {
@@ -14,6 +14,11 @@ export interface GalleryItem {
   platform: string;
   mediaUrl: string;
   mediaType: MediaType;
+  /**
+   * STU-C5: ordered carousel frames. Empty for a single-image kit (render
+   * `mediaUrl`); length > 1 marks a carousel whose order is preserved here.
+   */
+  media: AssetKitMedia[];
   caption: string;
   hashtags: string[];
   status: AssetKit["status"];

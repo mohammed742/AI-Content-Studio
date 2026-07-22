@@ -44,6 +44,7 @@ export async function GET(req: Request) {
       platform: assetKits.platform,
       mediaUrl: assetKits.mediaUrl,
       mediaType: assetKits.mediaType,
+      media: assetKits.media,
       caption: assetKits.caption,
       hashtags: assetKits.hashtags,
       status: assetKits.status,

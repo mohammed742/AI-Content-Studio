@@ -209,6 +209,17 @@ export const CONTENT_TYPES = [
 export const MEDIA_TYPES = ["image", "video"] as const;
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
+// STU-C5 (DEV-67): Carousel (CONTEXT.md → "Carousel") — an Asset Kit that
+// carries an ordered array of media frames instead of a single image, sharing
+// one caption/hashtag set (how-to guides, process breakdowns, style guides,
+// lookbooks). One frame in the ordered `media` array below; the frame-count
+// bounds live with the assembly service (`@/lib/carousel`).
+export interface AssetKitMedia {
+  /** Public R2 URL of this frame. */
+  url: string;
+  mediaType: MediaType;
+}
+
 // draft → ready now; published set by Social Publishing (Phase 4/5).
 export const ASSET_KIT_STATUSES = ["draft", "ready", "published"] as const;
 
@@ -226,6 +237,10 @@ export const assetKits = pgTable(
     platform: text("platform").notNull(),
     mediaUrl: text("media_url").notNull(),
     mediaType: text("media_type", { enum: MEDIA_TYPES }).notNull(),
+    // STU-C5: ordered carousel frames. Empty `[]` = single-image kit (use
+    // `mediaUrl`/`mediaType` above). When populated, `mediaUrl`/`mediaType`
+    // mirror frame 0 (the cover) so gallery thumbnails need no special-casing.
+    media: jsonb("media").$type<AssetKitMedia[]>().notNull().default([]),
     caption: text("caption").notNull(),
     hashtags: jsonb("hashtags").$type<string[]>().notNull().default([]),
     // Aggregate COGS across every model call that produced this kit (USD).

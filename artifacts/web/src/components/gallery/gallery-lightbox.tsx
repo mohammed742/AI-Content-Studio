@@ -7,7 +7,16 @@
  * follow-up).
  */
 import { useEffect, useState } from "react";
-import { ThumbsUp, ThumbsDown, Download, Trash2, Check, Pencil } from "lucide-react";
+import {
+  ThumbsUp,
+  ThumbsDown,
+  Download,
+  Trash2,
+  Check,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -38,15 +47,26 @@ export function GalleryLightbox({
   const [caption, setCaption] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [frame, setFrame] = useState(0);
 
   useEffect(() => {
     if (item) {
       setCaption(item.caption);
       setEditing(false);
+      setFrame(0);
     }
   }, [item]);
 
   if (!item) return null;
+
+  // A carousel carries an ordered `media` array; a single-image kit falls back
+  // to its cover. The viewer steps through frames in payload order.
+  const frames =
+    item.media && item.media.length > 0
+      ? item.media
+      : [{ url: item.mediaUrl, mediaType: item.mediaType }];
+  const isCarousel = frames.length > 1;
+  const current = frames[Math.min(frame, frames.length - 1)];
 
   const saveCaption = async () => {
     const trimmed = caption.trim();
@@ -101,12 +121,60 @@ export function GalleryLightbox({
 
         <div className="grid gap-5 md:grid-cols-[1fr_1fr]">
           {/* Media */}
-          <div className="overflow-hidden rounded-lg border border-border bg-accent">
-            {item.mediaType === "video" ? (
-              <video src={item.mediaUrl} controls className="h-full w-full" />
+          <div className="relative overflow-hidden rounded-lg border border-border bg-accent">
+            {current.mediaType === "video" ? (
+              <video src={current.url} controls className="h-full w-full" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.mediaUrl} alt={item.title} className="h-full w-full object-cover" />
+              <img
+                src={current.url}
+                alt={isCarousel ? `${item.title} — slide ${frame + 1}` : item.title}
+                className="h-full w-full object-cover"
+              />
+            )}
+
+            {isCarousel && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous slide"
+                  onClick={() =>
+                    setFrame((f) => (f - 1 + frames.length) % frames.length)
+                  }
+                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/75"
+                >
+                  <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next slide"
+                  onClick={() => setFrame((f) => (f + 1) % frames.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/75"
+                >
+                  <ChevronRight className="h-5 w-5" strokeWidth={1.5} />
+                </button>
+                {/* Position indicator + dots — order runs left to right. */}
+                <div className="absolute inset-x-0 bottom-2 flex flex-col items-center gap-1.5">
+                  <div className="flex gap-1.5">
+                    {frames.map((f, i) => (
+                      <button
+                        key={f.url}
+                        type="button"
+                        aria-label={`Go to slide ${i + 1}`}
+                        aria-current={i === frame}
+                        onClick={() => setFrame(i)}
+                        className={cn(
+                          "h-1.5 rounded-full transition-all",
+                          i === frame ? "w-4 bg-white" : "w-1.5 bg-white/50",
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <span className="rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
+                    {frame + 1} / {frames.length}
+                  </span>
+                </div>
+              </>
             )}
           </div>
 
@@ -213,8 +281,9 @@ export function GalleryLightbox({
             {/* Actions */}
             <div className="mt-auto flex flex-wrap gap-2">
               <Button variant="outline" size="sm" className="rounded-lg" asChild>
-                <a href={item.mediaUrl} download target="_blank" rel="noreferrer">
-                  <Download className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Download
+                <a href={current.url} download target="_blank" rel="noreferrer">
+                  <Download className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
+                  {isCarousel ? `Download slide ${frame + 1}` : "Download"}
                 </a>
               </Button>
               <Button

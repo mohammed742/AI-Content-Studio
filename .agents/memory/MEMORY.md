@@ -4,3 +4,4 @@
 - [Linear MCP saveIssue status field](linear-mcp-saveissue.md) — use `state: "In Progress"` (a name), not `status`/`stateId`, when updating issue status via mcpLinearMCP_saveIssue.
 - [AI SDK v7 token usage fields](ai-sdk-usage-tokens.md) — `usage.inputTokens`/`usage.outputTokens` (not promptTokens/completionTokens), both optional — guard with `?? 0`.
 - [Long builds from bash](long-builds-in-bash.md) — next build takes ~5min, exceeds 120s bash cap; nohup dies silently, use setsid + log file + EXIT marker and poll.
+- [Carousel publishing is a Phase-4 dependency flag](carousel-publish-phase4.md) — STU-C5 ships carousel generation/storage/display, but Muapi's IG publish endpoint must be verified to accept multi-image posts before Phase 4 promises scheduled carousel publishing.
