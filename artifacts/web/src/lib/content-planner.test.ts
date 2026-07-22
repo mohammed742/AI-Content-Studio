@@ -159,6 +159,42 @@ test("buildPlannerPrompt embeds strategy, platforms, context, and holidays", () 
   assert.match(prompt, /between 5 and 7 content items/);
 });
 
+test("buildPlannerPrompt injects the industry strategy hint", () => {
+  const prompt = buildPlannerPrompt({
+    profile: profile(),
+    strategy: INDUSTRY_TEMPLATES.restaurant,
+    context: "",
+    holidays: [],
+  });
+  assert.match(prompt, /Industry strategy:/);
+  assert.match(prompt, /mouth-watering close-ups/); // restaurant hint
+});
+
+test("proposePlan uses the profile's region for the seasonal calendar", async () => {
+  // Jan 20 2026 → Australia Day (Jan 26) is within the default 21-day window.
+  const jan20 = new Date(Date.UTC(2026, 0, 20));
+  const auGen = fakeGenerate(sixItems());
+  const auService = new ContentPlannerService({
+    generate: auGen.fn,
+    retrieve: fakeRetrieve().fn,
+    now: () => jan20,
+    scorePlan: () => 80,
+  });
+  await auService.proposePlan("user-1", profile({ region: "AU" }));
+  assert.match(auGen.prompts[0], /Australia Day/);
+
+  // The same business with no region (defaults to US) sees no Australia Day.
+  const usGen = fakeGenerate(sixItems());
+  const usService = new ContentPlannerService({
+    generate: usGen.fn,
+    retrieve: fakeRetrieve().fn,
+    now: () => jan20,
+    scorePlan: () => 80,
+  });
+  await usService.proposePlan("user-1", profile());
+  assert.ok(!/Australia Day/.test(usGen.prompts[0]));
+});
+
 test("proposePlan retrieves context, prompts the LLM, and returns normalized items", async () => {
   const generate = fakeGenerate(sixItems());
   const retrieve = fakeRetrieve([

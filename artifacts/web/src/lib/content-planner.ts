@@ -25,7 +25,7 @@ import {
   type IndustryTemplate,
   type Weekday,
 } from "./industry-templates.ts";
-import { upcomingHolidays, type UpcomingHoliday } from "./seasonal.ts";
+import { upcomingHolidays, type UpcomingHoliday, type Region } from "./seasonal.ts";
 import { scorePlanQuality, MIN_PLAN_SCORE } from "./agent-evals.ts";
 import { persistentPipelineLogger } from "./pipeline-log.ts";
 import type { RetrievedChunk } from "@/lib/retrieval";
@@ -60,6 +60,12 @@ export interface PlannableProfile {
   targetCustomers?: string | null;
   products: { name: string; description?: string | null }[];
   socialPlatforms: string[];
+  /**
+   * STU-C6: which region's seasonal calendar to use. Optional forward-compatible
+   * seam — the Business Profile has no region column yet, so this defaults to
+   * "US" when absent. When a region field is added, the API route passes it here.
+   */
+  region?: Region;
 }
 
 export interface ContentPlanItem {
@@ -153,6 +159,7 @@ export function buildPlannerPrompt(input: {
   return [
     `You are a social media strategist proposing one week of content for ${profile.businessName}, a ${profile.businessType}.`,
     `Brand tone: ${profile.brandTone}.`,
+    `Industry strategy: ${strategy.strategyHint}`,
     profile.targetCustomers?.trim()
       ? `Target customers: ${profile.targetCustomers.trim()}.`
       : "",
@@ -218,6 +225,7 @@ export class ContentPlannerService {
       const holidays = upcomingHolidays(
         this.now(),
         options.seasonalWindowDays ?? DEFAULT_SEASONAL_WINDOW_DAYS,
+        profile.region ?? "US",
       );
       const retrieved = await this.retrieve(
         userId,

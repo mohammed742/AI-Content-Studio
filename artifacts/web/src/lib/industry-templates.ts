@@ -79,6 +79,13 @@ export interface IndustryTemplate {
   /** How often + what to post — reserved for the Phase 2 Content Calendar */
   postingSchedule: PostingSchedule;
   exampleHashtags: string[];
+  /**
+   * STU-C6: one-line strategic guidance for this industry, injected into the
+   * Content Planner prompt so proposals lean on what actually works for the
+   * business type (CONTEXT.md → "Industry Strategy"). This module is the
+   * canonical source for per-industry strategy — no parallel data file.
+   */
+  strategyHint: string;
 }
 
 export const INDUSTRY_TEMPLATES: Record<
@@ -115,6 +122,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#foodie", "#eatlocal", "#dailyspecial", "#freshmade"],
+    strategyHint:
+      "Lead with mouth-watering close-ups and the people behind the food; use limited-time specials to create urgency.",
   },
   "e-commerce": {
     businessType: "e-commerce",
@@ -146,6 +155,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#shopsmall", "#newarrival", "#onlineshopping", "#musthave"],
+    strategyHint:
+      "Show the product in real use with social proof; pair new drops with clear offers and fast-shipping reassurance.",
   },
   salon: {
     businessType: "salon",
@@ -176,6 +187,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#hairtransformation", "#selfcare", "#bookNow", "#glowup"],
+    strategyHint:
+      "Sell the transformation — before/after and finished looks; drive bookings with trending styles and limited slots.",
   },
   gym: {
     businessType: "gym",
@@ -207,6 +220,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#fitfam", "#getstronger", "#classpromo", "#transformation"],
+    strategyHint:
+      "Motivate with member results and quick actionable tips; build community with challenges and behind-the-scenes energy.",
   },
   real_estate: {
     businessType: "real_estate",
@@ -235,6 +250,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#justlisted", "#dreamhome", "#openhouse", "#realestate"],
+    strategyHint:
+      "Lead with aspirational listing visuals and local-market authority; educate buyers and spotlight neighborhoods.",
   },
   fashion: {
     businessType: "fashion",
@@ -266,6 +283,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#ootd", "#newcollection", "#stylegoals", "#fashionfinds"],
+    strategyHint:
+      "Style is the story — outfit inspiration, new collections, and trend-driven looks shot to be shareable.",
   },
   freelancer: {
     businessType: "freelancer",
@@ -294,6 +313,8 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#freelancer", "#portfolio", "#clientwork"],
+    strategyHint:
+      "Prove credibility with portfolio work and client testimonials; teach a little to signal expertise.",
   },
   other: {
     businessType: "other",
@@ -320,5 +341,7 @@ export const INDUSTRY_TEMPLATES: Record<
       ],
     },
     exampleHashtags: ["#smallbusiness", "#supportlocal"],
+    strategyHint:
+      "Lead with your core offer, keep a consistent posting rhythm, and let happy customers speak through testimonials.",
   },
 };
