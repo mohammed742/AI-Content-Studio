@@ -13,6 +13,7 @@ import {
   Calendar,
   Image,
   FolderOpen,
+  Users,
   Settings,
   ListChecks,
   ChevronLeft,
@@ -46,6 +47,11 @@ const navItems = [
     label: "Media Library",
     href: "/library",
     icon: FolderOpen,
+  },
+  {
+    label: "Presenters",
+    href: "/presenters",
+    icon: Users,
   },
   {
     label: "Settings",

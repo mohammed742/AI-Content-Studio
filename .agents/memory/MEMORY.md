@@ -5,3 +5,4 @@
 - [AI SDK v7 token usage fields](ai-sdk-usage-tokens.md) — `usage.inputTokens`/`usage.outputTokens` (not promptTokens/completionTokens), both optional — guard with `?? 0`.
 - [Long builds from bash](long-builds-in-bash.md) — next build takes ~5min, exceeds 120s bash cap; nohup dies silently, use setsid + log file + EXIT marker and poll.
 - [Carousel publishing is a Phase-4 dependency flag](carousel-publish-phase4.md) — STU-C5 ships carousel generation/storage/display, but Muapi's IG publish endpoint must be verified to accept multi-image posts before Phase 4 promises scheduled carousel publishing.
+- [Presenter portraits are placeholders — Phase-3 carryover](presenter-portraits-phase3.md) — STU-C7 ships the presenter library with SVG placeholder portraits; source real rights-cleared, lip-sync-ready portraits (→ R2, repoint imageUrl) before Phase 3's UGC pipeline uses them.

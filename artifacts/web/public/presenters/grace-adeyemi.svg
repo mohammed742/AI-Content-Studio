@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" role="img" aria-label="Grace Adeyemi placeholder portrait">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#292524"/>
+      <stop offset="1" stop-color="#18181b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="500" fill="url(#bg)"/>
+  <rect width="400" height="500" fill="url(#glow)"/>
+  <circle cx="200" cy="200" r="92" fill="#09090b" fill-opacity="0.35" stroke="#10b981" stroke-width="3"/>
+  <text x="200" y="200" dominant-baseline="central" text-anchor="middle"
+        font-family="Geist, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="72" font-weight="600" fill="#fafafa">GA</text>
+  <text x="200" y="360" text-anchor="middle"
+        font-family="Geist, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="26" font-weight="500" fill="#e4e4e7">Grace Adeyemi</text>
+  <text x="200" y="392" text-anchor="middle"
+        font-family="Geist, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="14" font-weight="400" letter-spacing="1.5" fill="#10b981">PRESENTER · PLACEHOLDER</text>
+</svg>
