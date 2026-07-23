@@ -44,6 +44,7 @@
 | **Generation** | One invocation of an AI model producing one output (one image, one video clip, one text block). The atomic billing unit. |
 | **Generation Credit** | Internal unit tracking AI usage per user per billing period. One generation = one credit. Different asset types may cost multiple credits. |
 | **UGC Pipeline** | The 5-step User-Generated Content video pipeline: script → voiceover → lipsync → B-roll → assembly. Produces a talking-head style product review video at ~$0.91. |
+| **UGC Script** | The ~15-second first-person spoken script for a UGC video ad, written by the agent (GPT-4.1-mini) from a product + brand context via RAG (DEV-27, `src/lib/ugc-script.ts`). Returned as three timeline segments — `hook` (talking head ~0-8s), `body` (voiced over B-roll ~8-12s), `cta` (talking head ~12-15s) — plus `spokenText` (the ordered concatenation the voiceover step consumes) and `wordCount`/`estimatedSeconds` reported against the 15-second budget (~2.5 words/sec, not hard-truncated). |
 | **B-Roll** | Secondary video footage (animated product photo) intercut with the main talking-head video. Adds visual variety to UGC ads. |
 | **Brand Conditioning** | The practice of injecting **retrieved** Business Profile context (via RAG) into every AI prompt to ensure brand-consistent output. Uses the Brand Knowledge Base, not raw profile dumps. |
 | **Asset** | A single generated file: one image, one video, or one audio clip. Multiple assets combine into an Asset Kit. |
