@@ -5,11 +5,11 @@
 
 > **Depends on Phase 2.5**: the presenter library slice must be done first — the lip-sync step needs presenter portraits to exist.
 >
-> **Model corrections (2026-07-10, live-POST-verified — not just catalog presence)**: the original model list busted the <$1 budget. `luma-flash-reframe` is $0.35 *per reframe* (≈$0.70/video for two extra formats) — replaced with `autocrop` ($0.05/reframe, AI subject tracking). `video-combiner` ($0.05) replaces server-side FFmpeg as the primary assembly path (kills the FFmpeg-on-Replit risk); FFmpeg stays as fallback. Voiceover is `elevenlabs-text-to-dialogue-v3` ($0.10) — voice realism is the make-or-break of the UGC format, and it's also the cheapest *live* natural-speech model (the $0.01 `mmaudio-v2-text-to-audio` originally listed as a budget fallback is a **dead endpoint** — 404 on generation — and the next live TTS jumps to $0.65, so there is no cheaper fallback; elevenlabs is the sole voiceover model). Per-video total: ≈$0.52 (vs ≈$0.98 with the original list). Every model here was live-POST-verified — see `.agents/memory/muapi-dead-catalog-endpoints.md`.
+> **Model corrections (2026-07-10, live-POST-verified — not just catalog presence)**: the original model list busted the <$1 budget. `luma-flash-reframe` is $0.35 *per reframe* (≈$0.70/video for two extra formats) — replaced with `autocrop` ($0.05/reframe, AI subject tracking). `video-combiner` ($0.05) replaces server-side FFmpeg as the primary assembly path (kills the FFmpeg-on-Replit risk); FFmpeg stays as fallback. Voiceover was `elevenlabs-text-to-dialogue-v3` ($0.10). **⚠️ Corrected 2026-07-24 (DEV-28):** elevenlabs FAILED generation 7/7 ("internal error") despite being catalog-live; a Text-to-Audio re-audit found **`gemini-3-1-flash-tts`** completes reliably to a real MP3 at **~$0.003 actual** (catalog est. $0.035) — cheaper *and* working. Swapped in (human-approved). The $0.01 `mmaudio-v2-text-to-audio` fallback is still a **dead endpoint** (404). Per-video total drops to ≈$0.42. Every model here was live-POST-verified — see `.agents/memory/muapi-api-contract.md` + `muapi-dead-catalog-endpoints.md`.
 
 ## Slices
 - `STU-23`: Script generation (GPT-4.1-mini → 15-sec product review scripts)
-- `STU-24`: Voiceover generation (elevenlabs-text-to-dialogue-v3 via Muapi — sole voiceover model; the $0.01 mmaudio fallback is a dead endpoint)
+- `STU-24`: Voiceover generation (**`gemini-3-1-flash-tts`** via Muapi — swapped 2026-07-24 off the broken `elevenlabs-text-to-dialogue-v3`; the $0.01 mmaudio fallback is a dead endpoint)
 - `STU-25`: Talking head / lip-sync video (creatify-lipsync via Muapi)
 - `STU-26`: Product B-roll animation (kling-v2.1-standard-i2v via Muapi)
 - `STU-27`: Video assembly (video-combiner via Muapi; server-side FFmpeg as fallback)
@@ -20,12 +20,12 @@
 | Step | Model | Cost |
 |------|-------|------|
 | Script | GPT-4.1-mini | ~$0.001 |
-| Voiceover | elevenlabs-text-to-dialogue-v3 | $0.10 |
+| Voiceover | gemini-3-1-flash-tts (was elevenlabs, broken) | ~$0.003 |
 | Talking head | creatify-lipsync | $0.04 |
 | B-roll | kling-v2.1-standard-i2v | $0.225 |
 | Assembly | video-combiner | $0.05 |
 | Reframe ×2 | autocrop | $0.10 |
-| **Total** | | **≈$0.52** ✅ |
+| **Total** | | **≈$0.42** ✅ |
 
 All models are `dynamic_pricing=true` — real cost comes from the `X-MuAPI-Cost-USD` header per request; the table is the base estimate.
 
@@ -39,7 +39,7 @@ src/app/dashboard/ugc/, src/components/ugc/
 ## Steps
 1. Script: retrieve product + brand tone via RAG → GPT-4.1-mini → 15-sec conversational UGC script
 2. Presenter: agent pre-selects a presenter from the Phase 2.5 presenter library, matched on targetAudienceTags. User can change.
-3. Voiceover: script → elevenlabs-text-to-dialogue-v3 → audio file URL. (Sole voiceover model — the cheap mmaudio fallback is a dead endpoint; next live TTS is $0.65, so no cheaper option.)
+3. Voiceover: script → `gemini-3-1-flash-tts` → audio (MP3) URL. (Swapped 2026-07-24 off the broken `elevenlabs-text-to-dialogue-v3`; single-speaker Gemini TTS, ~$0.003, completion-verified end-to-end.)
 4. Talking head: presenter photo + voiceover → creatify-lipsync → lip-synced video
 5. B-roll: product photo → kling-v2.1-standard-i2v with motion prompt → animated clip
 6. Assembly: video-combiner (Muapi) — talking head (0-8s) → B-roll (8-12s) → talking head CTA (12-15s). Verify transition quality; if unacceptable, fall back to server-side FFmpeg (original plan).
@@ -62,7 +62,7 @@ src/app/dashboard/ugc/, src/components/ugc/
 |------|-----------|
 | video-combiner transition quality unknown | Test with real clips first; FFmpeg fallback documented in step 6 |
 | autocrop subject tracking on talking heads | Test with a lip-sync clip before committing; luma-flash-reframe ($0.35) is the premium fallback if tracking fails |
-| ElevenLabs is the only affordable live TTS | mmaudio ($0.01) is dead; next live option is $0.65. If elevenlabs quality/cost disappoints, re-audit the Text-to-Audio catalog for newly-live cheap models before swapping |
+| ~~ElevenLabs is the only affordable live TTS~~ (RESOLVED 2026-07-24) | elevenlabs failed 7/7 in practice; re-audited the Text-to-Audio catalog → `gemini-3-1-flash-tts` completes at ~$0.003. Gemini voice quality vs elevenlabs is a soft downgrade to spot-check; `minimax-speech-2.6-turbo` ($0.65, simple prompt+voice) is the premium fallback if Gemini disappoints. |
 | Pipeline 2-5 min | Step-by-step progress with friendly labels |
 | Script quality | Industry-specific templates; user can always edit before confirming |
 | Dynamic pricing variance | Record real X-MuAPI-Cost-USD per step in pipeline logs; alert if a video exceeds $0.80 |

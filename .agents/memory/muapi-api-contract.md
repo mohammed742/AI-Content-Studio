@@ -61,3 +61,17 @@ Still-unverified (completion **not** re-tested 2026-07-23, decision was to defer
 | `luma-flash-reframe` | reframe/**premium** | `video_url` | ⚠️ **video** reframe model — mis-routed as image `reframe/premium`. Do not call it with an image. |
 
 So the two that complete (`ai-product-shot`, `ai-background-remover`) still need `product-photo.ts` to send `image_url`/`scene_description` (not `image`/`prompt`). `reframe` (both tiers) and `product_photo/premium` need model/param rework before they work. **These are latent DEV-19 bugs the free-tier shim was masking — not regressions from the shim removal itself, but now activated by it.**
+
+---
+
+**2026-07-23 (DEV-28) — voiceover model `elevenlabs-text-to-dialogue-v3`.** Get the exact input schema (incl. enums) for any Muapi model from **`GET /api/v1/models/{slug}`** → `input_schema.schemas.input_data.properties` (this is how the voice list below was found — no separate `/voices` endpoint exists; `/{slug}/voices`, `/voices`, `/{slug}/schema` all 404).
+- Request body: `{ dialogue: [{ text, voice_id }], stability?, language_code? }`. `dialogue` is a **list** of speaker turns (each needs BOTH `text` and `voice_id`); `stability` 0–1 (default 0.5); `language_code` optional ISO-639-1 (auto-detect when omitted); total text ≤ 2000 chars.
+- `voice_id` must be one of Muapi's **25 supported voices** (an enum in the schema) — raw ElevenLabs IDs (e.g. `21m00Tcm4TlvDq8ikWAM`) are rejected with "Invalid voice parameter". The list is mirrored in `src/lib/ugc-voiceover.ts` `VOICEOVER_VOICES`.
+- **Completion: FAILED 7/7 (2026-07-23 → re-probed 2026-07-24)** — with a valid enum voice + correct schema, generation ends `status:failed, error:"internal error, please try again later"` (same signature as the dead ideogram family). First session: 4/4 instant fail. Re-probe next day: jobs are now *accepted and processed* (poll ran past a 120s client timeout) but still terminally fail with the same internal error (3/3). Catalog-live + 422-live, but NOT completing — looks like a persistent provider-side generation fault, not a transient blip. It is the plan's **sole** voiceover model (mmaudio fallback is dead 404).
+
+**2026-07-24 — RESOLVED: swapped voiceover to `gemini-3-1-flash-tts` (human-approved).** Re-audited the Text-to-Audio catalog (482 models; ~7 real speech TTS after excluding Suno music + lipsync). The 2026-07-10 plan claim "next live TTS is $0.65" is stale — the catalog now has two Gemini TTS at $0.035 catalog / **~$0.003 actual**:
+- `gemini-3-1-flash-tts` ✅ completes (~38s, MP3), **chosen** (fast, newest, cheap).
+- `gemini-2-5-pro-tts` ✅ completes (~48s, MP3) — the premium alternative.
+- `minimax-speech-2.6-turbo` ($0.65, simple `prompt`+`voice_id`, 472-voice enum) — untested fallback if Gemini quality disappoints.
+
+Gemini TTS request shape (multi-speaker, from live `input_schema`): `{ speakers: [{ speaker_id:"Speaker N", voice_name(enum 30: Kore/Zephyr/Aoede…), accent(enum 8), style(enum 6), pace(enum 4) }], dialogue_turns: [{ speaker_id, text(≤10000) }], scene?, sample_context?, temperature? }`. DEV-28 (`src/lib/ugc-voiceover.ts`) uses one speaker + one turn. **End-to-end completion-verified** through the real service (MP3 out, $0.00336). `elevenlabs-text-to-dialogue-v3` is left broken/unused; re-audit only if Gemini quality is rejected.

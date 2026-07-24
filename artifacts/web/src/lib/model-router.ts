@@ -39,6 +39,7 @@ export type AssetType =
   | "text_graphic"
   | "video_animate"
   | "ugc_lipsync"
+  | "voiceover"
   | "background_removal"
   | "reframe";
 
@@ -111,6 +112,15 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     inputType: "image", // avatar models animate a presenter image
     standard: { model: "creatify-lipsync", estimatedCost: 0.04 },
     premium: { model: "kling-v1-avatar-pro", estimatedCost: 0.65 },
+  },
+  voiceover: {
+    inputType: "text", // Text to Audio (Gemini TTS)
+    // 2026-07-24: plan's `elevenlabs-text-to-dialogue-v3` FAILED generation 7/7
+    // ("internal error") despite being catalog-live. Text-to-Audio re-audit →
+    // `gemini-3-1-flash-tts` completes reliably to a real MP3 at ~$0.003 actual
+    // (catalog est. $0.035), cheaper AND working. Human-approved swap. The dead
+    // `mmaudio-v2-text-to-audio` ($0.01) is still 404. See ugc-voiceover.ts.
+    standard: { model: "gemini-3-1-flash-tts", estimatedCost: 0.035 },
   },
   background_removal: {
     inputType: "image",

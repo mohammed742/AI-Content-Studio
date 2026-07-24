@@ -73,6 +73,17 @@ test("text_graphic routes to completing models with text inputType", () => {
   assert.equal(standard.inputType, "text");
 });
 
+test("voiceover routes to gemini tts with text inputType; premium falls back to standard", () => {
+  const router = new ModelRouter();
+  const standard = router.route("voiceover", "standard");
+  // 2026-07-24: swapped off the broken `elevenlabs-text-to-dialogue-v3`.
+  assert.equal(standard.model, "gemini-3-1-flash-tts");
+  assert.equal(standard.estimatedCost, 0.035);
+  assert.equal(standard.inputType, "text");
+  // Single-model asset type — premium resolves to the standard model.
+  assert.equal(router.getModel("voiceover", "premium"), "gemini-3-1-flash-tts");
+});
+
 test("premium falls back to standard when there is no premium model", () => {
   const router = new ModelRouter();
   const standard = router.route("background_removal", "standard");
