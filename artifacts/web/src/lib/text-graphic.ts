@@ -20,7 +20,6 @@
  * loads under the bare Node test runner.
  */
 import { modelRouter, ModelRouter, type Quality } from "./model-router.ts";
-import { resolveAvailableModel } from "./muapi-availability.ts";
 import type { ContentType } from "./industry-templates.ts";
 import {
   FORMAT_ASPECT_RATIOS,
@@ -97,7 +96,6 @@ export interface TextGraphicServiceConfig {
   muapi?: MuapiGenerate;
   retrieve?: GraphicRetriever;
   router?: ModelRouter;
-  resolveModel?: (model: string) => string;
   /** RAG chunks to retrieve for context (default 6). */
   k?: number;
 }
@@ -106,14 +104,12 @@ export class TextGraphicService {
   private readonly muapi: MuapiGenerate;
   private readonly retrieve: GraphicRetriever;
   private readonly router: ModelRouter;
-  private readonly resolveModel: (model: string) => string;
   private readonly k: number;
 
   constructor(config: TextGraphicServiceConfig = {}) {
     this.muapi = config.muapi ?? defaultMuapi;
     this.retrieve = config.retrieve ?? defaultRetrieve;
     this.router = config.router ?? modelRouter;
-    this.resolveModel = config.resolveModel ?? resolveAvailableModel;
     this.k = config.k ?? 6;
   }
 
@@ -130,9 +126,7 @@ export class TextGraphicService {
     );
     const context = chunks.map((chunk) => `- ${chunk.content}`).join("\n");
 
-    const model = this.resolveModel(
-      this.router.getModel("text_graphic", quality),
-    );
+    const model = this.router.getModel("text_graphic", quality);
     const generated = await this.muapi(
       model,
       { prompt: buildTextGraphicPrompt(request, context), aspect_ratio: aspectRatio },

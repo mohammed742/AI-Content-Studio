@@ -15,10 +15,13 @@
  * the static values). Each entry also carries an `inputType` so generation UIs
  * know whether to ask the user for text or an image.
  *
- * Availability caveat: this account's key only serves `nano-banana-2` at
- * generation time; the pipelines route through `resolveAvailableModel` for that
- * (muapi-availability.ts). This table encodes the *intended* models; run
- * `pnpm canary:muapi` for the authoritative live/dead list.
+ * Availability: the account key is a paid key that completes the intended
+ * models directly (verified 2026-07-23 — `flux-krea-dev`/`nano-banana-2` submit
+ * + poll to real CDN images), so the pipelines route these slugs through
+ * untouched — the old free-tier `resolveAvailableModel` shim has been removed.
+ * Liveness/completion still drift per model (e.g. `ideogram-v3-t2i` accepts
+ * jobs but dies with an internal error); run `pnpm canary:muapi` for the live
+ * list and completion-probe before trusting a newly routed slug.
  */
 
 import {
@@ -90,9 +93,13 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
   text_graphic: {
     inputType: "text", // Text to Image
     // STU-C2: text-heavy graphics (specials/schedules/quotes) the general
-    // image models render illegibly. Dedicated text-rendering specialists,
-    // both live-catalog-verified 2026-07-17 (costs match the live catalog).
-    standard: { model: "ideogram-v3-t2i", estimatedCost: 0.02 },
+    // image models render illegibly, so premium uses a text-rendering
+    // specialist (nano-banana-pro).
+    // 2026-07-23: `ideogram-v3-t2i` (the former standard pick) is DEAD on the
+    // paid key — it accepts jobs then fails 3/3 with "internal error" (submit +
+    // poll probe). Repointed standard to `nano-banana-2`, which completes and is
+    // what the removed free-tier shim was already rendering here.
+    standard: { model: "nano-banana-2", estimatedCost: 0.06 },
     premium: { model: "nano-banana-pro", estimatedCost: 0.12 },
   },
   video_animate: {

@@ -36,3 +36,14 @@ Because of this, the generation pipelines route **every** model through `artifac
 3. **Completion** (submit→poll→`completed`): the ONLY axis that proves real output. **A `422` from the canary does NOT prove completion** — that still needs a full valid request. As of 2026-07-16 only `nano-banana-2` is completion-verified; the canary showing all 11 routed models "LIVE" (422) means their *endpoints* exist, not that they finish. Before trusting any non-`nano-banana-2` model in a pipeline, run a real submit+poll test.
 
 The Model Router now overrides its stale hard-coded costs with live catalog prices at resolve time (`ModelRouter.resolveWithCatalog`, `src/lib/muapi-catalog.ts`) and fails loud when a routed model is absent from the catalog. Costs were badly stale (e.g. `creatify-lipsync` $0.30 hard-coded vs $0.04 live).
+
+---
+
+**2026-07-23 — PAID KEY CONFIRMED; free-tier shim REMOVED. This supersedes the "Served-model reality" block above and its "Do NOT delete this shim" warning.** The key in `artifacts/web/.env.local` is a **paid** key that completes real, non-`nano-banana-2` models. Verified by a live submit→poll completion probe (drives the real `MuapiService`):
+- `flux-krea-dev` (`social_graphic/premium`) → ✅ **completes**, real CDN image, $0.015.
+- `nano-banana-2` → ✅ completes (control), $0.06.
+- `ideogram-v3-t2i` (was `text_graphic/standard`) → ❌ **completes-FAIL 3/3**: accepts the job (POST 422 on empty body = live) then the poll dies with `status:failed, error:"internal error, please try again later."`. This is model-side breakage, independent of key/tier.
+
+Actions taken: **deleted `src/lib/muapi-availability.ts`** (`resolveAvailableModel`) and removed the `resolveModel` seam from `product-photo.ts` / `social-graphic.ts` / `text-graphic.ts` so the Router's intended slugs flow through untouched; **repointed `text_graphic/standard` off the dead `ideogram-v3-t2i` → `nano-banana-2`** (what the shim was already rendering there). The 2026-07-16 "restore the shim" episode was correct **for that key at that time** — the difference now is a paid key + a real completion probe, not an assumption.
+
+Still-unverified (completion **not** re-tested 2026-07-23, decision was to defer): the input-image models `ai-product-shot`, `ai-background-remover`, `ideogram-v3-reframe` (product-photo pipeline) and `ai-product-photography`, plus all Phase-3 video/lipsync slugs. They pass liveness (422) but a bare-prompt probe can't complete-test an Image-to-Image model — **run a real input-image submit+poll before trusting them.** The three-axis rule (catalog presence ≠ endpoint liveness ≠ completion) still holds.

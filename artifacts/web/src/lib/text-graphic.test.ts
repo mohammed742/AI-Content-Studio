@@ -3,8 +3,8 @@
  *
  * Node built-in runner + native TS type-stripping (see PROGRESS.md → DEV-15).
  * The Muapi call and the retriever are injected as fakes, so prompt assembly
- * (exact display text quoted + layout guidance), routing (incl. the free-tier
- * override), and format→aspect-ratio handling verify without the network.
+ * (exact display text quoted + layout guidance), routing, and
+ * format→aspect-ratio handling verify without the network.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -103,26 +103,21 @@ test("story and banner map to their aspect ratios", async () => {
   }
 });
 
-test("routes text_graphic through the free-tier override to nano-banana-2", async () => {
+test("routes text_graphic/standard to the routed model (nano-banana-2)", async () => {
   const muapi = fakeMuapi();
   const service = new TextGraphicService({ muapi: muapi.fn, retrieve: fakeRetrieve().fn });
 
   const result = await service.generate(request());
 
-  // Router returns ideogram-v3-t2i for text_graphic/standard → free-tier shim
-  // collapses it to nano-banana-2 until the key is upgraded.
+  // 2026-07-23: standard was repointed off the dead `ideogram-v3-t2i` to
+  // `nano-banana-2`, which flows through untouched (free-tier shim removed).
   assert.equal(result.model, "nano-banana-2");
   assert.equal(muapi.calls[0].model, "nano-banana-2");
 });
 
-test("premium tier resolves the text specialist before the shim", async () => {
+test("premium tier routes the text specialist (nano-banana-pro)", async () => {
   const muapi = fakeMuapi();
-  // Identity resolveModel (no shim) proves the intended premium model is routed.
-  const service = new TextGraphicService({
-    muapi: muapi.fn,
-    retrieve: fakeRetrieve().fn,
-    resolveModel: (m) => m,
-  });
+  const service = new TextGraphicService({ muapi: muapi.fn, retrieve: fakeRetrieve().fn });
 
   const result = await service.generate(request({ quality: "premium" }));
 

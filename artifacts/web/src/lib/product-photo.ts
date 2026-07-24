@@ -16,13 +16,8 @@
  * services so the module loads under the bare Node test runner.
  */
 import { modelRouter, ModelRouter, type Quality } from "./model-router.ts";
-import { resolveAvailableModel } from "./muapi-availability.ts";
 import type { MuapiGenerateParams, MuapiGenerateResult } from "@/lib/muapi";
 import type { RetrievedChunk } from "@/lib/retrieval";
-
-// Free-tier model shim shared with the other generation pipelines. Re-exported
-// for existing importers/tests. TODO(muapi-key): see ./muapi-availability.ts.
-export { resolveAvailableModel };
 
 export interface ProductForPhoto {
   name: string;
@@ -112,7 +107,6 @@ export interface ProductPhotoServiceConfig {
   muapi?: MuapiGenerate;
   retrieve?: PhotoRetriever;
   router?: ModelRouter;
-  resolveModel?: (model: string) => string;
   /** RAG chunks to retrieve for context (default 6). */
   k?: number;
 }
@@ -121,14 +115,12 @@ export class ProductPhotoService {
   private readonly muapi: MuapiGenerate;
   private readonly retrieve: PhotoRetriever;
   private readonly router: ModelRouter;
-  private readonly resolveModel: (model: string) => string;
   private readonly k: number;
 
   constructor(config: ProductPhotoServiceConfig = {}) {
     this.muapi = config.muapi ?? defaultMuapi;
     this.retrieve = config.retrieve ?? defaultRetrieve;
     this.router = config.router ?? modelRouter;
-    this.resolveModel = config.resolveModel ?? resolveAvailableModel;
     this.k = config.k ?? 6;
   }
 
@@ -152,9 +144,7 @@ export class ProductPhotoService {
     // Optional: background removal on an uploaded product image.
     let sourceImageUrl = request.sourceImageUrl;
     if (sourceImageUrl) {
-      const model = this.resolveModel(
-        this.router.getModel("background_removal", quality),
-      );
+      const model = this.router.getModel("background_removal", quality);
       const removed = await this.muapi(
         model,
         { image: sourceImageUrl },
@@ -166,9 +156,7 @@ export class ProductPhotoService {
     }
 
     // Scene generation.
-    const sceneModel = this.resolveModel(
-      this.router.getModel("product_photo", quality),
-    );
+    const sceneModel = this.router.getModel("product_photo", quality);
     const params: MuapiGenerateParams = {
       prompt: buildScenePrompt(request.product, request.business, context),
     };
@@ -184,7 +172,7 @@ export class ProductPhotoService {
     // Optional: reframe into requested aspect ratios.
     const reframes: ReframeOutput[] = [];
     for (const aspectRatio of request.aspectRatios ?? []) {
-      const model = this.resolveModel(this.router.getModel("reframe", quality));
+      const model = this.router.getModel("reframe", quality);
       const reframed = await this.muapi(
         model,
         { image: scene.imageUrl, aspect_ratio: aspectRatio },

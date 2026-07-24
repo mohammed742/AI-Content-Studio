@@ -61,12 +61,13 @@ test("premium tier selects the premium model when one exists", () => {
   assert.equal(router.route("reframe", "premium").model, "luma-flash-reframe");
 });
 
-test("text_graphic routes to text-rendering specialists with text inputType", () => {
+test("text_graphic routes to completing models with text inputType", () => {
   const router = new ModelRouter();
   const standard = router.route("text_graphic", "standard");
   const premium = router.route("text_graphic", "premium");
-  assert.equal(standard.model, "ideogram-v3-t2i");
-  assert.equal(standard.estimatedCost, 0.02);
+  // standard was repointed off the dead `ideogram-v3-t2i` (2026-07-23).
+  assert.equal(standard.model, "nano-banana-2");
+  assert.equal(standard.estimatedCost, 0.06);
   assert.equal(premium.model, "nano-banana-pro");
   assert.equal(premium.estimatedCost, 0.12);
   assert.equal(standard.inputType, "text");

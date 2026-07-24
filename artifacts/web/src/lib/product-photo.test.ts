@@ -3,8 +3,8 @@
  *
  * Node built-in runner + native TS type-stripping (see PROGRESS.md → DEV-15).
  * The Muapi call and the retriever are injected as fakes, so the step
- * sequence, model routing (incl. the free-tier override), prompt, cost
- * aggregation, and optional-step skipping verify without the network.
+ * sequence, model routing, prompt, cost aggregation, and optional-step
+ * skipping verify without the network.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,6 @@ import {
   ProductPhotoService,
   buildPhotoQuery,
   buildScenePrompt,
-  resolveAvailableModel,
   type MuapiGenerate,
   type PhotoRetriever,
   type ProductPhotoRequest,
@@ -62,12 +61,6 @@ function fakeRetrieve(chunks: RetrievedChunk[] = []): {
   return { fn, calls };
 }
 
-test("resolveAvailableModel maps un-served slugs to nano-banana-2 (free-tier shim)", () => {
-  assert.equal(resolveAvailableModel("ai-product-shot"), "nano-banana-2");
-  assert.equal(resolveAvailableModel("ideogram-v3-reframe"), "nano-banana-2");
-  assert.equal(resolveAvailableModel("nano-banana-2"), "nano-banana-2");
-});
-
 test("buildPhotoQuery and buildScenePrompt include product + brand details", () => {
   const q = buildPhotoQuery(request().product, request().business);
   assert.match(q, /Margherita Pizza — wood-fired/);
@@ -80,7 +73,7 @@ test("buildPhotoQuery and buildScenePrompt include product + brand details", () 
   assert.match(prompt, /Brand context:/);
 });
 
-test("minimal pipeline: retrieve → scene, routed model overridden to nano-banana-2", async () => {
+test("minimal pipeline: retrieve → scene, routed model flows through untouched", async () => {
   const muapi = fakeMuapi();
   const retrieve = fakeRetrieve([
     { content: "Margherita Pizza — wood-fired", kind: "product", similarity: 0.9 },
@@ -92,10 +85,10 @@ test("minimal pipeline: retrieve → scene, routed model overridden to nano-bana
   assert.equal(retrieve.calls.length, 1);
   assert.equal(muapi.calls.length, 1);
   assert.equal(muapi.calls[0].step, "execute:product_photo");
-  assert.equal(muapi.calls[0].model, "nano-banana-2"); // routed ai-product-shot → override
+  assert.equal(muapi.calls[0].model, "ai-product-shot"); // routed model, no shim
   assert.match(String(muapi.calls[0].params.prompt), /Margherita Pizza/);
   assert.match(String(muapi.calls[0].params.prompt), /Brand context:/);
-  assert.equal(result.model, "nano-banana-2");
+  assert.equal(result.model, "ai-product-shot");
   assert.equal(result.imageUrl, "https://img/execute:product_photo");
   assert.deepEqual(result.reframes, []);
   assert.equal(result.steps.length, 1);

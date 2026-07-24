@@ -3,7 +3,7 @@
  *
  * Node built-in runner + native TS type-stripping (see PROGRESS.md → DEV-15).
  * The Muapi call and the retriever are injected as fakes, so prompt assembly,
- * routing (incl. the free-tier override), and format→aspect-ratio handling
+ * routing, and format→aspect-ratio handling
  * verify without the network.
  */
 import { test } from "node:test";
@@ -98,13 +98,14 @@ test("story and banner map to their aspect ratios", async () => {
   }
 });
 
-test("routes social_graphic through the free-tier override to nano-banana-2", async () => {
+test("routes social_graphic/standard to the routed model (nano-banana-2)", async () => {
   const muapi = fakeMuapi();
   const service = new SocialGraphicService({ muapi: muapi.fn, retrieve: fakeRetrieve().fn });
 
   const result = await service.generate(request());
 
-  // Router returns nano-banana-2 for social_graphic/standard → override keeps it.
+  // Router returns nano-banana-2 for social_graphic/standard; it flows through
+  // untouched now that the free-tier shim is gone.
   assert.equal(result.model, "nano-banana-2");
   assert.equal(muapi.calls[0].model, "nano-banana-2");
 });
