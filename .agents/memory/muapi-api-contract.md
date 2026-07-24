@@ -47,3 +47,17 @@ The Model Router now overrides its stale hard-coded costs with live catalog pric
 Actions taken: **deleted `src/lib/muapi-availability.ts`** (`resolveAvailableModel`) and removed the `resolveModel` seam from `product-photo.ts` / `social-graphic.ts` / `text-graphic.ts` so the Router's intended slugs flow through untouched; **repointed `text_graphic/standard` off the dead `ideogram-v3-t2i` → `nano-banana-2`** (what the shim was already rendering there). The 2026-07-16 "restore the shim" episode was correct **for that key at that time** — the difference now is a paid key + a real completion probe, not an assumption.
 
 Still-unverified (completion **not** re-tested 2026-07-23, decision was to defer): the input-image models `ai-product-shot`, `ai-background-remover`, `ideogram-v3-reframe` (product-photo pipeline) and `ai-product-photography`, plus all Phase-3 video/lipsync slugs. They pass liveness (422) but a bare-prompt probe can't complete-test an Image-to-Image model — **run a real input-image submit+poll before trusting them.** The three-axis rule (catalog presence ≠ endpoint liveness ≠ completion) still holds.
+
+---
+
+**2026-07-23 (later) — input-image completion probe + REAL param schemas.** Read each model's `422` validation body (empty-`{}` POST, free) then submitted real jobs with a real input image. **Critical: the param names below are the ground truth — `product-photo.ts` (DEV-19) currently sends `{prompt, image}`, which is WRONG for every one of these; with the shim gone the product-photo pipeline will 422 at runtime and needs a param-mapping fix.**
+
+| Model | Route | Required params (from 422 body) | Completion |
+|---|---|---|---|
+| `ai-background-remover` | background_removal/standard | `image_url` | ✅ $0.01 |
+| `ai-product-shot` | product_photo/standard | `image_url`, `scene_description` | ✅ $0.02 |
+| `ideogram-v3-reframe` | reframe/standard | `image_url` | ❌ `failed: internal error` — same failure as `ideogram-v3-t2i`; the **ideogram family is down/broken** on this key. Repoint like t2i was. |
+| `ai-product-photography` | product_photo/**premium** | `prompt`, `person_image_url`, `product_image_url` | ❌ downstream 422 — this is a **person+product try-on** model (needs a real person photo), NOT a plain product generator. Likely the wrong model for `product_photo/premium`. |
+| `luma-flash-reframe` | reframe/**premium** | `video_url` | ⚠️ **video** reframe model — mis-routed as image `reframe/premium`. Do not call it with an image. |
+
+So the two that complete (`ai-product-shot`, `ai-background-remover`) still need `product-photo.ts` to send `image_url`/`scene_description` (not `image`/`prompt`). `reframe` (both tiers) and `product_photo/premium` need model/param rework before they work. **These are latent DEV-19 bugs the free-tier shim was masking — not regressions from the shim removal itself, but now activated by it.**

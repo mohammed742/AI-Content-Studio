@@ -258,9 +258,18 @@
 
 **Verification:** `typecheck ✅ · tests 164/164 ✅ (−1, the removed shim test) · lint ✅ · build ✅`. Canary re-run clean (`ideogram-v3-t2i` gone; `nano-banana-2` now serves both graphic standards). Pure `src/lib` change, no browser-observable surface.
 
-**Deferred / flags:**
-- **Input-image models NOT completion-tested** (human deferred): `ai-product-shot`, `ai-background-remover`, `ideogram-v3-reframe`, `ai-product-photography` + all Phase-3 video/lipsync slugs pass liveness (422) but a bare-prompt probe can't complete-test an Image-to-Image model. **Run a real input-image submit+poll before trusting them in a live pipeline.**
-- **Not committed, not pushed** (awaiting human go-ahead). **Linear not touched** per the human's "no dedicated issue" choice — offered to comment on STU-C1 (owns the model-drift/canary story) if wanted.
+**Input-image completion probe (run after the commit, human-requested) — exposed a latent DEV-19 bug:**
+- Read each model's `422` schema, then submitted real input-image jobs. **`product-photo.ts` sends `{prompt, image}`, but the real models want different field names** — the shim (everything → `nano-banana-2`, which takes `prompt`) was masking this. With the shim gone, **the product-photo pipeline will 422 at runtime.**
+- ✅ complete (with correct params): `ai-background-remover` (`image_url`, $0.01), `ai-product-shot` (`image_url`+`scene_description`, $0.02).
+- ❌ `ideogram-v3-reframe` (`reframe/standard`) fails "internal error" — the whole ideogram family is down; needs a repoint like `ideogram-v3-t2i` got.
+- ❌ `ai-product-photography` (`product_photo/premium`) is a person+product **try-on** model (`person_image_url`+`product_image_url`), not a product generator — likely the wrong pick.
+- ⚠️ `luma-flash-reframe` (`reframe/premium`) is a **video** model (`video_url`) — mis-routed for image reframe.
+- Full table + real param schemas recorded in `.agents/memory/muapi-api-contract.md`.
+
+**TECH DEBT (human deferred — "leave it, proceed to DEV-28"):** product-photo pipeline is broken post-shim-removal. Needs: (1) map params to `image_url`/`scene_description` for `product_photo/standard` + `background_removal` (both verified-complete); (2) repoint `reframe` (both tiers) to a working image-reframe model; (3) replace `product_photo/premium`'s try-on model. Worth its own DEV-19-rework slice.
+
+**Flags:**
+- **Committed `d7a556e`** (shim removal); doc updates (probe findings) committed after. **Not pushed** (awaiting human go-ahead). **Linear not touched** per the human's "no dedicated issue" choice.
 - Next slice is still **DEV-28 (STU-24) voiceover** — unchanged by this fix.
 
 ### 2026-07-23 — STU-23 (DEV-27): UGC script generation (first slice of Phase 3)
