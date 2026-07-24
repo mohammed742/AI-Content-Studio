@@ -75,3 +75,11 @@ So the two that complete (`ai-product-shot`, `ai-background-remover`) still need
 - `minimax-speech-2.6-turbo` ($0.65, simple `prompt`+`voice_id`, 472-voice enum) — untested fallback if Gemini quality disappoints.
 
 Gemini TTS request shape (multi-speaker, from live `input_schema`): `{ speakers: [{ speaker_id:"Speaker N", voice_name(enum 30: Kore/Zephyr/Aoede…), accent(enum 8), style(enum 6), pace(enum 4) }], dialogue_turns: [{ speaker_id, text(≤10000) }], scene?, sample_context?, temperature? }`. DEV-28 (`src/lib/ugc-voiceover.ts`) uses one speaker + one turn. **End-to-end completion-verified** through the real service (MP3 out, $0.00336). `elevenlabs-text-to-dialogue-v3` is left broken/unused; re-audit only if Gemini quality is rejected.
+
+---
+
+**2026-07-24 (DEV-29) — talking-head / lip-sync: `creatify-lipsync` needs a VIDEO, not a photo.** The plan wanted "presenter *photo* + voiceover → talking head," but the live schema (`GET /api/v1/models/{slug}`) shows the "Audio to Video" category splits into two incompatible input shapes:
+- **`video_url` + `audio_url`** (re-syncs an existing presenter *video*'s lips — CANNOT animate a static portrait): `creatify-lipsync`, `latent-sync`, `sync-lipsync`, `veed-lipsync` — all **$0.04**. The plan's `creatify-lipsync` is one of these → structurally wrong for a portrait-only presenter library.
+- **`image_url` + `audio_url`** (animates a static portrait into a talking head — the plan's real intent): `infinitetalk-image-to-video` **$0.20** (+ optional `prompt`, `resolution` enum `480p`/`720p` default `480p`); `omnihuman-1-5` $0.25; `kling-v2-avatar-standard` $0.35; `kling-v1-avatar-pro` $0.65 (`prompt`/`image_url`/`audio_url`, **no `resolution`**).
+
+**Chosen (human-approved): `infinitetalk-image-to-video`** — cheapest image-driven option, keeps the portrait data model, per-video total ≈$0.66 (< $1 goal). **Completion-verified end-to-end 2026-07-24**: real gemini VO + real test portrait → real talking-head MP4, 480p, 91.5s, **actual $0.28** (catalog $0.20 — dynamic pricing; a full ~15s script may cost more, watch the $0.80/video alert). Routing table `ugc_lipsync/standard` repointed. Premium `kling-v1-avatar-pro` left un-wired (different params, no `resolution`, completion-unverified).

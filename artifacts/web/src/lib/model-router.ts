@@ -109,8 +109,21 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     premium: { model: "kling-v2.1-pro-i2v", estimatedCost: 0.4 },
   },
   ugc_lipsync: {
-    inputType: "image", // avatar models animate a presenter image
-    standard: { model: "creatify-lipsync", estimatedCost: 0.04 },
+    inputType: "image", // image + audio → talking-head video (needs a presenter portrait)
+    // 2026-07-24 (DEV-29): the plan's `creatify-lipsync` ($0.04) is an
+    // Audio-to-Video model that re-syncs an existing presenter *video*
+    // (required params `video_url` + `audio_url`), so it cannot drive a static
+    // presenter portrait — and the Phase-2.5 presenter library only produces
+    // portraits. Repointed to `infinitetalk-image-to-video` ($0.20 catalog /
+    // ~$0.28 actual for a ~7s clip), which takes `image_url` + `audio_url` (the
+    // plan's real intent). Completion-verified end-to-end (portrait + gemini VO
+    // → real MP4, 480p, 91.5s). Human-approved swap. The other $0.04 lip-sync
+    // models (latent-sync/sync-lipsync/veed-lipsync) all likewise need
+    // `video_url`. Per-video total stays ≈$0.66, under the <$1 goal.
+    standard: { model: "infinitetalk-image-to-video", estimatedCost: 0.2 },
+    // premium: `kling-v1-avatar-pro` is also image + audio (schema-verified), but
+    // its params differ (`prompt`/`image_url`/`audio_url`, NO `resolution`) and it
+    // is completion-UNVERIFIED — not wired this slice. See ugc-lipsync.ts.
     premium: { model: "kling-v1-avatar-pro", estimatedCost: 0.65 },
   },
   voiceover: {

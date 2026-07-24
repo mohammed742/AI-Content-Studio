@@ -10,7 +10,7 @@
 ## Slices
 - `STU-23`: Script generation (GPT-4.1-mini → 15-sec product review scripts)
 - `STU-24`: Voiceover generation (**`gemini-3-1-flash-tts`** via Muapi — swapped 2026-07-24 off the broken `elevenlabs-text-to-dialogue-v3`; the $0.01 mmaudio fallback is a dead endpoint)
-- `STU-25`: Talking head / lip-sync video (creatify-lipsync via Muapi)
+- `STU-25`: Talking head / lip-sync video (**`infinitetalk-image-to-video`** via Muapi — swapped 2026-07-24 off `creatify-lipsync`, which needs a presenter *video* (`video_url`), not the static portrait the presenter library produces)
 - `STU-26`: Product B-roll animation (kling-v2.1-standard-i2v via Muapi)
 - `STU-27`: Video assembly (video-combiner via Muapi; server-side FFmpeg as fallback)
 - `STU-28`: Multi-format reframe (autocrop: 9:16, 1:1, 16:9)
@@ -21,11 +21,11 @@
 |------|-------|------|
 | Script | GPT-4.1-mini | ~$0.001 |
 | Voiceover | gemini-3-1-flash-tts (was elevenlabs, broken) | ~$0.003 |
-| Talking head | creatify-lipsync | $0.04 |
+| Talking head | infinitetalk-image-to-video (was creatify-lipsync, needs video not photo) | ~$0.28 |
 | B-roll | kling-v2.1-standard-i2v | $0.225 |
 | Assembly | video-combiner | $0.05 |
 | Reframe ×2 | autocrop | $0.10 |
-| **Total** | | **≈$0.42** ✅ |
+| **Total** | | **≈$0.66** ✅ |
 
 All models are `dynamic_pricing=true` — real cost comes from the `X-MuAPI-Cost-USD` header per request; the table is the base estimate.
 
@@ -40,7 +40,7 @@ src/app/dashboard/ugc/, src/components/ugc/
 1. Script: retrieve product + brand tone via RAG → GPT-4.1-mini → 15-sec conversational UGC script
 2. Presenter: agent pre-selects a presenter from the Phase 2.5 presenter library, matched on targetAudienceTags. User can change.
 3. Voiceover: script → `gemini-3-1-flash-tts` → audio (MP3) URL. (Swapped 2026-07-24 off the broken `elevenlabs-text-to-dialogue-v3`; single-speaker Gemini TTS, ~$0.003, completion-verified end-to-end.)
-4. Talking head: presenter photo + voiceover → creatify-lipsync → lip-synced video
+4. Talking head: presenter photo + voiceover → **`infinitetalk-image-to-video`** (image+audio) → lip-synced video. (Swapped 2026-07-24 off `creatify-lipsync`: the live schema showed it — and every $0.04 lip-sync model — requires a presenter *video* (`video_url`), so it can't animate a static portrait. `infinitetalk-image-to-video` takes `image_url`+`audio_url`, ~$0.28, completion-verified end-to-end.)
 5. B-roll: product photo → kling-v2.1-standard-i2v with motion prompt → animated clip
 6. Assembly: video-combiner (Muapi) — talking head (0-8s) → B-roll (8-12s) → talking head CTA (12-15s). Verify transition quality; if unacceptable, fall back to server-side FFmpeg (original plan).
 7. Reframe: assembled video → autocrop → 9:16 + 1:1 + 16:9
