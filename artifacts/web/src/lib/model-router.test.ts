@@ -95,6 +95,17 @@ test("video_assemble routes to video-combiner; premium falls back to standard", 
   assert.equal(router.getModel("video_assemble", "premium"), "video-combiner");
 });
 
+test("video_reframe routes to autocrop; premium falls back to standard", () => {
+  const router = new ModelRouter();
+  const standard = router.route("video_reframe", "standard");
+  assert.equal(standard.model, "autocrop");
+  assert.equal(standard.estimatedCost, 0.05);
+  // "Video to Video" collapses to the image inputType (pipeline-internal op).
+  assert.equal(standard.inputType, "image");
+  // Single-model asset type — premium resolves to the standard model.
+  assert.equal(router.getModel("video_reframe", "premium"), "autocrop");
+});
+
 test("premium falls back to standard when there is no premium model", () => {
   const router = new ModelRouter();
   const standard = router.route("background_removal", "standard");

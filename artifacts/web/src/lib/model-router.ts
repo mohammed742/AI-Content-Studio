@@ -41,6 +41,7 @@ export type AssetType =
   | "ugc_lipsync"
   | "voiceover"
   | "video_assemble"
+  | "video_reframe"
   | "background_removal"
   | "reframe";
 
@@ -150,6 +151,21 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     // (plan step 6) — chosen to kill the FFmpeg-on-Replit risk. Single model,
     // so premium falls back to standard.
     standard: { model: "video-combiner", estimatedCost: 0.05 },
+  },
+  video_reframe: {
+    // Catalog category is "Video to Video" → `inputTypeForCategory` collapses to
+    // "image" (matches what `resolveWithCatalog` derives live, no drift). Reframe
+    // is pipeline-internal: it consumes the DEV-32 master, the user supplies nothing.
+    inputType: "image",
+    // DEV-31 (STU-28): the plan's reframe step. `autocrop` crops+reframes the
+    // assembled master into 9:16 / 1:1 / 16:9 via AI subject tracking. Live
+    // schema (`GET /api/v1/models/autocrop`, 2026-07-26): body
+    // `{ video_url, start_time, end_time, aspect_ratio? (9:16/16:9/1:1/4:5/4:3/3:4) }`,
+    // cost $0.05 (dynamic). Plan-corrected (2026-07-10, human-approved) off the
+    // original `luma-flash-reframe` ($0.35, 7× the cost) — kept as the documented
+    // manual premium fallback if subject tracking fails, but its schema differs
+    // (no segment window) so it is NOT wired here; single model, premium → standard.
+    standard: { model: "autocrop", estimatedCost: 0.05 },
   },
   background_removal: {
     inputType: "image",
