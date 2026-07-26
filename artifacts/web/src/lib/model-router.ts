@@ -40,6 +40,7 @@ export type AssetType =
   | "video_animate"
   | "ugc_lipsync"
   | "voiceover"
+  | "video_assemble"
   | "background_removal"
   | "reframe";
 
@@ -134,6 +135,21 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     // (catalog est. $0.035), cheaper AND working. Human-approved swap. The dead
     // `mmaudio-v2-text-to-audio` ($0.01) is still 404. See ugc-voiceover.ts.
     standard: { model: "gemini-3-1-flash-tts", estimatedCost: 0.035 },
+  },
+  video_assemble: {
+    // Catalog category is "Video to Video"; `inputTypeForCategory` collapses
+    // every non-"Text to" category to "image", so the static value matches what
+    // `resolveWithCatalog` derives live (no drift). Assembly is pipeline-internal
+    // anyway — it consumes prior clips, the user supplies nothing here.
+    inputType: "image",
+    // DEV-32 (STU-27): the plan's assembly step. `video-combiner` concatenates
+    // the ordered UGC clips (talking head → B-roll → CTA) into one master.
+    // Live schema (`GET /api/v1/models/video-combiner`, 2026-07-25): body
+    // `{ videos_list: [url,…], aspect_ratio? }`, cost $0.05 (dynamic). This is
+    // the primary assembly path; server-side FFmpeg is the documented fallback
+    // (plan step 6) — chosen to kill the FFmpeg-on-Replit risk. Single model,
+    // so premium falls back to standard.
+    standard: { model: "video-combiner", estimatedCost: 0.05 },
   },
   background_removal: {
     inputType: "image",

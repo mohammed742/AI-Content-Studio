@@ -84,6 +84,17 @@ test("voiceover routes to gemini tts with text inputType; premium falls back to 
   assert.equal(router.getModel("voiceover", "premium"), "gemini-3-1-flash-tts");
 });
 
+test("video_assemble routes to video-combiner; premium falls back to standard", () => {
+  const router = new ModelRouter();
+  const standard = router.route("video_assemble", "standard");
+  assert.equal(standard.model, "video-combiner");
+  assert.equal(standard.estimatedCost, 0.05);
+  // "Video to Video" collapses to the image inputType (pipeline-internal op).
+  assert.equal(standard.inputType, "image");
+  // Single-model asset type — premium resolves to the standard model.
+  assert.equal(router.getModel("video_assemble", "premium"), "video-combiner");
+});
+
 test("premium falls back to standard when there is no premium model", () => {
   const router = new ModelRouter();
   const standard = router.route("background_removal", "standard");

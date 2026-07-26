@@ -23,7 +23,7 @@
 | Voiceover | gemini-3-1-flash-tts (was elevenlabs, broken) | ~$0.003 |
 | Talking head | infinitetalk-image-to-video (was creatify-lipsync, needs video not photo) | ~$0.28 |
 | B-roll | kling-v2.1-standard-i2v | $0.225 (completion-verified 2026-07-24, exact) |
-| Assembly | video-combiner | $0.05 |
+| Assembly | video-combiner | $0.05 (est.; DEV-32 wired + schema-verified, but **live completion NOT verified** — model was 503 "at capacity" ~20h during the build) |
 | Reframe ×2 | autocrop | $0.10 |
 | **Total** | | **≈$0.66** ✅ |
 
@@ -42,7 +42,7 @@ src/app/dashboard/ugc/, src/components/ugc/
 3. Voiceover: script → `gemini-3-1-flash-tts` → audio (MP3) URL. (Swapped 2026-07-24 off the broken `elevenlabs-text-to-dialogue-v3`; single-speaker Gemini TTS, ~$0.003, completion-verified end-to-end.)
 4. Talking head: presenter photo + voiceover → **`infinitetalk-image-to-video`** (image+audio) → lip-synced video. (Swapped 2026-07-24 off `creatify-lipsync`: the live schema showed it — and every $0.04 lip-sync model — requires a presenter *video* (`video_url`), so it can't animate a static portrait. `infinitetalk-image-to-video` takes `image_url`+`audio_url`, ~$0.28, completion-verified end-to-end.)
 5. B-roll: product photo → kling-v2.1-standard-i2v with motion prompt → animated clip. (DEV-30, `src/lib/ugc-broll.ts`. Reuses the existing `video_animate` Asset Type — already routed to this model — rather than a new type. Request `{ prompt, image_url, aspect_ratio (16:9/9:16/1:1, default 16:9), duration (5/10s, default 5) }`; blank prompt → `DEFAULT_MOTION_PROMPT`. **Completion-verified end-to-end 2026-07-24**: real product image → real MP4, ~75s, **$0.225** exactly (no dynamic-pricing surprise).)
-6. Assembly: video-combiner (Muapi) — talking head (0-8s) → B-roll (8-12s) → talking head CTA (12-15s). Verify transition quality; if unacceptable, fall back to server-side FFmpeg (original plan).
+6. Assembly: video-combiner (Muapi) — talking head (0-8s) → B-roll (8-12s) → talking head CTA (12-15s). Verify transition quality; if unacceptable, fall back to server-side FFmpeg (original plan). (DEV-32, `src/lib/ugc-assembly.ts` + new `video_assemble` Asset Type. **Live schema verified** `GET /api/v1/models/video-combiner` 2026-07-25: `{ videos_list:[url,…] (2–20 clips, each 5–60s), aspect_ratio? (enum incl. `auto` default) }` → `{ video }` normalized to `outputs[0]`, $0.05 dynamic. Service is a generic ordered-clip stitcher (2–20 http(s) clips); the pipeline orchestrator decides which clips. ⚠️ **Completion NOT verified**: `video-combiner` returned `503 "at capacity"` on 60 submits over ~20h — a sustained provider outage, not a code fault (endpoint/key/schema all confirmed via 422-on-empty-body + control). `video-combiner` is the **only** multi-clip concatenation model in the catalog (no drop-in alternative). Human-approved to submit for review with the completion probe deferred; re-run `scripts/qa-assembly-probe.mjs` when capacity returns before final sign-off. FFmpeg fallback intentionally NOT built this slice — scope + the FFmpeg-on-Replit risk it was chosen to avoid.)
 7. Reframe: assembled video → autocrop → 9:16 + 1:1 + 16:9
 8. Upload all 3 variants to R2, create Asset Kit
 9. UI: script review (editable) → presenter (changeable) → confirm ("3 credits") → progress with friendly labels → video player with platform tabs. No model names, no costs.
