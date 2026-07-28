@@ -1,10 +1,12 @@
 # Phase 4 — Social Publishing
 
-**Status**: Not started
+**Status**: In progress — STU-31 (DEV-35) built 2026-07-28 (connect flow + `social_accounts`); STU-32…36 not started.
 **Goal**: Connect social accounts and publish content directly from the app.
 
+> ⚠️ **Contract note (verified live 2026-07-28, DEV-35):** Muapi's social API is real and matches `muapi.ai/docs/social-publishing`. `POST /social/{youtube|tiktok|instagram}/connect-url` → `{ url }`; `GET /social/ext/accounts?external_user_id=…` → account array; publish endpoints `POST /{platform}-publish` ($0.01 each). **Muapi owns the OAuth callback itself** and only bounces the user to our `redirect_to` afterward, so our side stores **no OAuth tokens** — just the `muapiAccountId`. Instagram uses `instagram_business_*` scopes (Business/Creator account required). `platform` stored as a string enum, not the plan's "1/2/3".
+
 ## Slices
-- `STU-31`: Social account connection flow (OAuth via Muapi connect-url)
+- `STU-31`: Social account connection flow (OAuth via Muapi connect-url) — **BUILT (DEV-35, 2026-07-28)**: `social_accounts` table + `src/lib/social-publishing.ts` + `POST /api/social/connect` + `GET /api/social/callback` + minimal `/social` page. Static checks green; live OAuth is human-gated QA.
 - `STU-32`: Connected accounts management UI (list, rename, disconnect)
 - `STU-33`: Publish-to-YouTube flow
 - `STU-34`: Publish-to-TikTok flow

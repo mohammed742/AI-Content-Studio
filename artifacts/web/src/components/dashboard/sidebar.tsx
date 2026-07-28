@@ -17,6 +17,7 @@ import {
   Settings,
   ListChecks,
   Video,
+  Share2,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -58,6 +59,11 @@ const navItems = [
     label: "Presenters",
     href: "/presenters",
     icon: Users,
+  },
+  {
+    label: "Social Accounts",
+    href: "/social",
+    icon: Share2,
   },
   {
     label: "Settings",

@@ -539,3 +539,44 @@ export const ugcJobs = pgTable(
 
 export type UgcJobRow = typeof ugcJobs.$inferSelect;
 export type InsertUgcJob = typeof ugcJobs.$inferInsert;
+
+// DEV-35: Social Account (CONTEXT.md) — a social platform account the user has
+// connected via Muapi's OAuth connect flow. Muapi holds the OAuth tokens; we
+// store only the handle (`muapiAccountId`) the publish endpoints address.
+// NOTE: `platform` is a string enum (youtube|tiktok|instagram), not the plan's
+// "1/2/3" magic numbers — matches every other schema enum and the Muapi slugs.
+export const SOCIAL_PLATFORMS = ["youtube", "tiktok", "instagram"] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+export const socialAccounts = pgTable(
+  "social_accounts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    platform: text("platform", { enum: SOCIAL_PLATFORMS }).notNull(),
+    // Muapi's account id (the `id` from GET /social/ext/accounts) — the handle
+    // the publish endpoints take as `account_id`. Stored as text for id parity.
+    muapiAccountId: text("muapi_account_id").notNull(),
+    // Human-facing labels from Muapi: the platform display name + connected handle.
+    platformName: text("platform_name").notNull(),
+    accountName: text("account_name").notNull(),
+    connectedAt: timestamp("connected_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("social_accounts_user_id_idx").on(table.userId),
+    // One row per (user, Muapi account) — re-syncing is idempotent.
+    uniqueIndex("social_accounts_user_muapi_idx").on(
+      table.userId,
+      table.muapiAccountId,
+    ),
+  ],
+);
+
+export type SocialAccount = typeof socialAccounts.$inferSelect;
+export type InsertSocialAccount = typeof socialAccounts.$inferInsert;
