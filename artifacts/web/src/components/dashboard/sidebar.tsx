@@ -16,6 +16,7 @@ import {
   Users,
   Settings,
   ListChecks,
+  Video,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -32,6 +33,11 @@ const navItems = [
     label: "Content Plan",
     href: "/plan",
     icon: ListChecks,
+  },
+  {
+    label: "UGC Video",
+    href: "/plan/ugc",
+    icon: Video,
   },
   {
     label: "Calendar",

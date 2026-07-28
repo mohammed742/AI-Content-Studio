@@ -218,6 +218,12 @@ export interface AssetKitMedia {
   /** Public R2 URL of this frame. */
   url: string;
   mediaType: MediaType;
+  /**
+   * Optional aspect-ratio label (e.g. "9:16"). Set by the UGC pipeline (DEV-33)
+   * so a multi-format video kit's Result tabs know which variant is which;
+   * unset for image carousels (STU-C5) / composites, which are order-only.
+   */
+  aspectRatio?: string;
 }
 
 // draft → ready now; published set by Social Publishing (Phase 4/5).
@@ -428,3 +434,108 @@ export const pipelineLogs = pgTable(
 
 export type PipelineLog = typeof pipelineLogs.$inferSelect;
 export type InsertPipelineLog = typeof pipelineLogs.$inferInsert;
+
+// DEV-33: UGC Job (CONTEXT.md → "UGC Pipeline") — one UGC-style video ad build.
+// Mirrors `content_plans`: the agent proposes a script + pre-selects a presenter
+// (a `draft` job); the user reviews/edits; then the pipeline runs step-by-step
+// (`generating` → `completed`/`failed`). The per-step status list AND each
+// step's intermediate output URL live on the row so a failed step *resumes*
+// from where it stopped rather than restarting the whole (2–5 min) pipeline.
+export const UGC_JOB_STATUSES = [
+  "draft",
+  "generating",
+  "completed",
+  "failed",
+] as const;
+
+export const UGC_STEP_STATUSES = [
+  "pending",
+  "generating",
+  "completed",
+  "failed",
+] as const;
+
+// Ordered pipeline step keys. A job's actual step list is fixed at propose time
+// (B-roll + assembly only appear when a product image is available), so retry
+// resumes against a stable list.
+export const UGC_STEP_KEYS = [
+  "voiceover",
+  "talking_head",
+  "broll",
+  "assembly",
+  "reframe",
+  "finalize",
+] as const;
+export type UgcStepKey = (typeof UGC_STEP_KEYS)[number];
+
+/** One pipeline step's user-facing status (DESIGN §9.6 step 4 progress list). */
+export interface UgcStepRecord {
+  key: UgcStepKey;
+  /** Friendly, no-jargon label shown to the user, e.g. "Writing the voiceover…". */
+  label: string;
+  status: (typeof UGC_STEP_STATUSES)[number];
+  error?: string | null;
+}
+
+/** The reviewed/edited script stored on the job (DEV-27 `UgcScript`, sans cost). */
+export interface UgcScriptRecord {
+  hook: string;
+  body: string;
+  cta: string;
+  /** hook + body + cta, in order — the voiceover step's input. */
+  spokenText: string;
+  wordCount: number;
+  estimatedSeconds: number;
+}
+
+/**
+ * Intermediate pipeline outputs, persisted so a retry resumes from the failed
+ * step instead of re-running completed ones. `variants` are the reframed
+ * per-format clips (still on Muapi URLs until `finalize` moves them to R2).
+ */
+export interface UgcJobOutputs {
+  audioUrl?: string;
+  talkingHeadUrl?: string;
+  brollUrl?: string;
+  masterUrl?: string;
+  variants?: AssetKitMedia[];
+  /** The finalized Asset Kit id (also mirrored to the `assetKitId` column). */
+  assetKitId?: string;
+}
+
+export const ugcJobs = pgTable(
+  "ugc_jobs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status", { enum: UGC_JOB_STATUSES }).notNull().default("draft"),
+    // The product the ad reviews (from the Business Profile).
+    productName: text("product_name").notNull(),
+    // B-roll source photo (Media Library upload). Null → talking-head-only build.
+    productImageUrl: text("product_image_url"),
+    // The agent-pre-selected presenter id (`src/lib/presenters.ts`).
+    presenterId: text("presenter_id").notNull(),
+    script: jsonb("script").$type<UgcScriptRecord>().notNull(),
+    steps: jsonb("steps").$type<UgcStepRecord[]>().notNull().default([]),
+    outputs: jsonb("outputs").$type<UgcJobOutputs>().notNull().default({}),
+    // The final multi-format Asset Kit (set when the job completes).
+    assetKitId: text("asset_kit_id"),
+    // Aggregate COGS across every model call (USD, hidden from the user).
+    totalCost: doublePrecision("total_cost").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("ugc_jobs_user_id_idx").on(table.userId)],
+);
+
+export type UgcJobRow = typeof ugcJobs.$inferSelect;
+export type InsertUgcJob = typeof ugcJobs.$inferInsert;

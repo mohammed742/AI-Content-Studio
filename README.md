@@ -4,11 +4,11 @@ AI-powered social media content platform for small and medium businesses. Users 
 
 ## Status
 
-**Phase 2.5 — Coverage & Asset Foundation: complete.** ✅ (Phases 0–2 complete.)
+**Phase 2.5 — Coverage & Asset Foundation: complete.** ✅ (Phases 0–2 complete.) **Phase 3 — UGC Video Pipeline: all 7 slices built** (in review); live end-to-end video render is gated on two carryovers — real presenter portraits and the provider-verified assembly step.
 
 The full **Agent Loop** runs end to end: **Plan → Retrieve → Route → Execute → Assemble → Publish**. A user creates a content plan, approves it, and the agent generates and stores every item — no prompts, no model names, no dollar figures. Phase 2.5 then closed the gap between what onboarding promises and what the engine can deliver — text-heavy graphics, the user's own photos, before/after composites, multi-image carousels — and laid the foundations Phase 3 depends on (the presenter library).
 
-Next up: **Phase 3 — UGC Video Pipeline** (talking-head product-review videos).
+**Phase 3 — UGC Video Pipeline** (talking-head product-review videos) is built end to end: the agent writes a short script, casts a presenter, and runs a resumable script → voiceover → talking-head → B-roll → assembly → reframe pipeline behind a review wizard. It's in review; a real rendered video awaits real presenter portraits and provider-side verification of the assembly step.
 
 ### What works today
 
@@ -19,8 +19,9 @@ Next up: **Phase 3 — UGC Video Pipeline** (talking-head product-review videos)
 - **Gallery** (`/gallery`) — browse generated Asset Kits in a filterable/sortable grid with a lightbox (editable caption, hashtags, download, delete) and thumbs up/down feedback. Carousels show an ordered slideshow.
 - **Media Library** (`/library`) — upload and manage your own business photos (source material for the image-to-image pipelines).
 - **Presenters** (`/presenters`) — browse the roster of presenters the agent uses for UGC-style video ads, filterable by audience tag (the foundation Phase 3's lip-sync pipeline consumes).
+- **UGC Video** (`/plan/ugc`) — the agent-driven wizard for UGC-style video ads: it proposes a ~15s script and pre-selects a presenter for your audience; you review/edit and confirm; a resumable pipeline (voiceover → talking head → product B-roll → assembly → multi-format reframe) runs with friendly step progress and produces a video with per-platform format tabs (9:16 / 1:1 / 16:9), saved as one multi-format Asset Kit. No prompts, model names, or costs. *(Built + in review; a real rendered video is gated on the two Phase-3 carryovers above.)*
 - **Phase 2.5 coverage additions** — a **text-graphic** asset type for text-heavy posts (legible menus, specials, quotes), **before/after composites** from two library photos, **multi-image carousels**, a **live model catalog** that hardens the Model Router against price/model drift, and region-aware seasonal + per-industry strategy data feeding the planner.
-- **The Agent Loop services** (`src/lib/`): Muapi generation (retry + cost tracking), Brand Knowledge Base (pgvector embeddings) + retrieval, Model Router + live catalog, Content Planner (with quality scoring + auto-regenerate), product-photo / social-graphic / text-graphic / before-after / carousel pipelines, caption/ad-copy generation, Asset Kit assembly, Generation Queue, and Agent Evals (feedback loop + pipeline reliability).
+- **The Agent Loop services** (`src/lib/`): Muapi generation (retry + cost tracking), Brand Knowledge Base (pgvector embeddings) + retrieval, Model Router + live catalog, Content Planner (with quality scoring + auto-regenerate), product-photo / social-graphic / text-graphic / before-after / carousel pipelines, the full UGC video pipeline (script / voiceover / talking-head / B-roll / assembly / reframe + the `ugc-pipeline` orchestrator), caption/ad-copy generation, Asset Kit assembly, Generation Queue, and Agent Evals (feedback loop + pipeline reliability).
 - **Generation tracer** — the original internal proof-of-concept route (image + caption end to end), still available.
 
 > **Runtime notes:** the current Muapi key is on the free/sandbox tier (generations return mock placeholder media at $0); image models are shimmed to `nano-banana-2` until the key is upgraded. Planning, captions, and embeddings require a valid `OPENAI_API_KEY` (verified active). Presenter portraits are placeholder SVGs pending real, rights-cleared portraits in Phase 3.
