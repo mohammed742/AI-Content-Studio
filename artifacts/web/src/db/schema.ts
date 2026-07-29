@@ -564,6 +564,10 @@ export const socialAccounts = pgTable(
     // Human-facing labels from Muapi: the platform display name + connected handle.
     platformName: text("platform_name").notNull(),
     accountName: text("account_name").notNull(),
+    // DEV-34: optional user-set friendly label. You can't rename a real platform
+    // handle via API, so "rename" is a local nickname. Display = nickname ??
+    // accountName. Nullable + preserved across re-sync (syncAccounts never writes it).
+    nickname: text("nickname"),
     connectedAt: timestamp("connected_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

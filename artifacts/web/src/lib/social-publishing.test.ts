@@ -15,10 +15,15 @@ import {
   buildConnectUrlBody,
   inferPlatform,
   mapMuapiAccount,
+  normalizeNickname,
+  MAX_NICKNAME_LENGTH,
   type SocialMuapiClient,
   type MuapiSocialAccount,
   type SocialAccountUpserter,
   type SocialAccountLister,
+  type SocialAccountGetter,
+  type SocialAccountRenamer,
+  type SocialAccountRemover,
 } from "./social-publishing.ts";
 import type { InsertSocialAccount, SocialAccount } from "@/db/schema";
 
@@ -30,6 +35,7 @@ function fakeRow(values: InsertSocialAccount): SocialAccount {
     muapiAccountId: values.muapiAccountId,
     platformName: values.platformName,
     accountName: values.accountName,
+    nickname: values.nickname ?? null,
     connectedAt: new Date("2026-07-28T00:00:00Z"),
   };
 }
@@ -99,6 +105,7 @@ test("getConnectUrl resolves the platform, builds the body, and returns the url"
       return "https://accounts.google.com/o/oauth2/auth?x=1";
     },
     listAccounts: async () => [],
+    disconnectAccount: async () => {},
   };
   const service = new SocialPublishingService({ muapi });
   const result = await service.getConnectUrl({
@@ -127,6 +134,7 @@ test("getConnectUrl validates before calling Muapi and rejects an empty url", as
       return "";
     },
     listAccounts: async () => [],
+    disconnectAccount: async () => {},
   };
   const service = new SocialPublishingService({ muapi });
   // Bad redirect → throws before Muapi is called.
@@ -161,6 +169,7 @@ test("syncAccounts upserts every connected + mappable account, skipping the rest
       assert.equal(ext, "clerk_123");
       return accounts;
     },
+    disconnectAccount: async () => {},
   };
   const upserted: InsertSocialAccount[] = [];
   const upsert: SocialAccountUpserter = async (values) => {
@@ -192,4 +201,153 @@ test("listAccounts passes through to the DB lister", async () => {
   };
   const service = new SocialPublishingService({ list });
   assert.deepEqual(await service.listAccounts("user_1"), rows);
+});
+
+// --- DEV-34: rename (local nickname) + disconnect ------------------------
+
+test("normalizeNickname trims, maps blank to null, and rejects overlong input", () => {
+  assert.equal(normalizeNickname("  Main channel "), "Main channel");
+  assert.equal(normalizeNickname(""), null);
+  assert.equal(normalizeNickname("   "), null);
+  assert.equal(normalizeNickname("x".repeat(MAX_NICKNAME_LENGTH)), "x".repeat(MAX_NICKNAME_LENGTH));
+  assert.throws(
+    () => normalizeNickname("x".repeat(MAX_NICKNAME_LENGTH + 1)),
+    /characters or fewer/,
+  );
+});
+
+test("renameAccount normalizes the nickname and updates the owned row", async () => {
+  const calls: Array<{ userId: string; accountId: string; nickname: string | null }> = [];
+  const rename: SocialAccountRenamer = async (userId, accountId, nickname) => {
+    calls.push({ userId, accountId, nickname });
+    return fakeRow({
+      userId,
+      platform: "youtube",
+      muapiAccountId: "1",
+      platformName: "YouTube",
+      accountName: "Chan",
+      nickname,
+    });
+  };
+  const service = new SocialPublishingService({ rename });
+  const row = await service.renameAccount({
+    userId: "user_1",
+    accountId: "row_1",
+    nickname: "  My Brand  ",
+  });
+  assert.equal(row.nickname, "My Brand");
+  assert.deepEqual(calls, [{ userId: "user_1", accountId: "row_1", nickname: "My Brand" }]);
+});
+
+test("renameAccount clears the nickname when given a blank value", async () => {
+  let received: string | null = "unset";
+  const rename: SocialAccountRenamer = async (userId, accountId, nickname) => {
+    received = nickname;
+    return fakeRow({
+      userId,
+      platform: "youtube",
+      muapiAccountId: "1",
+      platformName: "YouTube",
+      accountName: "Chan",
+      nickname,
+    });
+  };
+  const service = new SocialPublishingService({ rename });
+  const row = await service.renameAccount({ userId: "user_1", accountId: "row_1", nickname: "   " });
+  assert.equal(received, null);
+  assert.equal(row.nickname, null);
+});
+
+test("renameAccount throws when the row isn't found (or not owned)", async () => {
+  const rename: SocialAccountRenamer = async () => null;
+  const service = new SocialPublishingService({ rename });
+  await assert.rejects(
+    service.renameAccount({ userId: "user_1", accountId: "nope", nickname: "x" }),
+    /Account not found/,
+  );
+});
+
+test("disconnectAccount revokes on Muapi then deletes the local row, in order", async () => {
+  const order: string[] = [];
+  const account = fakeRow({
+    userId: "user_1",
+    platform: "youtube",
+    muapiAccountId: "42",
+    platformName: "YouTube",
+    accountName: "Chan",
+  });
+  const getOwned: SocialAccountGetter = async (userId, accountId) => {
+    order.push(`get:${userId}:${accountId}`);
+    return account;
+  };
+  const muapi: SocialMuapiClient = {
+    getConnectUrl: async () => "u",
+    listAccounts: async () => [],
+    disconnectAccount: async (muapiAccountId, externalUserId) => {
+      order.push(`muapi:${muapiAccountId}:${externalUserId}`);
+    },
+  };
+  const remove: SocialAccountRemover = async (userId, accountId) => {
+    order.push(`remove:${userId}:${accountId}`);
+  };
+  const service = new SocialPublishingService({ muapi, getOwned, remove });
+  await service.disconnectAccount({
+    userId: "user_1",
+    accountId: "row_42",
+    externalUserId: "clerk_123",
+  });
+  assert.deepEqual(order, [
+    "get:user_1:row_42",
+    "muapi:42:clerk_123",
+    "remove:user_1:row_42",
+  ]);
+});
+
+test("disconnectAccount throws (and never calls Muapi/remove) for an unowned id", async () => {
+  let touched = false;
+  const getOwned: SocialAccountGetter = async () => null;
+  const muapi: SocialMuapiClient = {
+    getConnectUrl: async () => "u",
+    listAccounts: async () => [],
+    disconnectAccount: async () => {
+      touched = true;
+    },
+  };
+  const remove: SocialAccountRemover = async () => {
+    touched = true;
+  };
+  const service = new SocialPublishingService({ muapi, getOwned, remove });
+  await assert.rejects(
+    service.disconnectAccount({ userId: "user_1", accountId: "nope", externalUserId: "c1" }),
+    /Account not found/,
+  );
+  assert.equal(touched, false);
+});
+
+test("disconnectAccount does not delete the local row if Muapi revoke fails", async () => {
+  let removed = false;
+  const account = fakeRow({
+    userId: "user_1",
+    platform: "tiktok",
+    muapiAccountId: "9",
+    platformName: "TikTok",
+    accountName: "TT",
+  });
+  const getOwned: SocialAccountGetter = async () => account;
+  const muapi: SocialMuapiClient = {
+    getConnectUrl: async () => "u",
+    listAccounts: async () => [],
+    disconnectAccount: async () => {
+      throw new Error("Muapi disconnect failed (500)");
+    },
+  };
+  const remove: SocialAccountRemover = async () => {
+    removed = true;
+  };
+  const service = new SocialPublishingService({ muapi, getOwned, remove });
+  await assert.rejects(
+    service.disconnectAccount({ userId: "user_1", accountId: "row_9", externalUserId: "c1" }),
+    /Muapi disconnect failed/,
+  );
+  assert.equal(removed, false);
 });

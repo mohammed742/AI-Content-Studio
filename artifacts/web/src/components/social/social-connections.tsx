@@ -5,21 +5,14 @@
  *
  * One card per platform (YouTube / TikTok / Instagram). Disconnected → a
  * "Connect" CTA that POSTs to /api/social/connect and navigates the browser to
- * the returned Muapi OAuth URL. Connected → the account name(s), read-only
- * (rename/disconnect is DEV-34). On return from OAuth the callback route bounces
- * here with ?connected=1&count=N (or ?error=sync_failed) → surfaced as a toast.
+ * the returned Muapi OAuth URL. Connected → each account with rename + disconnect
+ * controls (DEV-34, via SocialAccountRow). On return from OAuth the callback
+ * route bounces here with ?connected=1&count=N (or ?error=sync_failed) → toast.
  */
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Youtube,
-  Instagram,
-  Music2,
-  Share2,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { Youtube, Instagram, Music2, Share2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,15 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  SocialAccountRow,
+  type ManagedAccount,
+} from "@/components/social/social-account-row";
 
 type PlatformId = "youtube" | "tiktok" | "instagram";
 
-interface ConnectedAccount {
-  id: string;
-  platform: string;
-  platformName: string;
-  accountName: string;
-}
+type ConnectedAccount = ManagedAccount;
 
 const PLATFORMS: ReadonlyArray<{
   id: PlatformId;
@@ -142,13 +134,7 @@ export function SocialConnections({
                 {connected.length > 0 && (
                   <ul className="space-y-1.5">
                     {connected.map((a) => (
-                      <li
-                        key={a.id}
-                        className="flex items-center gap-2 text-sm text-foreground"
-                      >
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-                        <span className="truncate">{a.accountName}</span>
-                      </li>
+                      <SocialAccountRow key={a.id} account={a} />
                     ))}
                   </ul>
                 )}

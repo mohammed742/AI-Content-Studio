@@ -123,15 +123,44 @@ export function mapMuapiAccount(
   };
 }
 
+/** Max length of a user-set account nickname (DEV-34). */
+export const MAX_NICKNAME_LENGTH = 60;
+
+/**
+ * Normalize a rename request into a stored nickname: trim, treat blank as null
+ * (clears the nickname → display falls back to the platform handle), and reject
+ * anything longer than {@link MAX_NICKNAME_LENGTH}.
+ */
+export function normalizeNickname(value: string): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.length > MAX_NICKNAME_LENGTH) {
+    throw new Error(
+      `Nickname must be ${MAX_NICKNAME_LENGTH} characters or fewer`,
+    );
+  }
+  return trimmed;
+}
+
 // --- injectable seams -----------------------------------------------------
 
-/** The Muapi social HTTP surface (connect-url + list accounts). Injectable. */
+/**
+ * The Muapi social HTTP surface (connect-url + list + disconnect). Injectable.
+ * `disconnectAccount` revokes the connection on Muapi's side; the id is the
+ * account's `muapiAccountId`.
+ */
 export interface SocialMuapiClient {
   getConnectUrl(
     platform: SocialPlatform,
     body: ConnectUrlRequestBody,
   ): Promise<string>;
   listAccounts(externalUserId: string): Promise<MuapiSocialAccount[]>;
+  disconnectAccount(
+    muapiAccountId: string,
+    externalUserId: string,
+  ): Promise<void>;
 }
 
 /** Upsert a connected account (idempotent on user + Muapi account id). */
@@ -140,11 +169,30 @@ export type SocialAccountUpserter = (
 ) => Promise<SocialAccount>;
 /** List a user's connected accounts, newest first. */
 export type SocialAccountLister = (userId: string) => Promise<SocialAccount[]>;
+/** Fetch one of a user's accounts by id (ownership-scoped), or null. */
+export type SocialAccountGetter = (
+  userId: string,
+  accountId: string,
+) => Promise<SocialAccount | null>;
+/** Set an account's nickname (ownership-scoped); returns the row, or null if not found. */
+export type SocialAccountRenamer = (
+  userId: string,
+  accountId: string,
+  nickname: string | null,
+) => Promise<SocialAccount | null>;
+/** Delete one of a user's accounts (ownership-scoped). */
+export type SocialAccountRemover = (
+  userId: string,
+  accountId: string,
+) => Promise<void>;
 
 export interface SocialPublishingServiceConfig {
   muapi?: SocialMuapiClient;
   upsert?: SocialAccountUpserter;
   list?: SocialAccountLister;
+  getOwned?: SocialAccountGetter;
+  rename?: SocialAccountRenamer;
+  remove?: SocialAccountRemover;
 }
 
 export interface GetConnectUrlRequest {
@@ -158,15 +206,35 @@ export interface SyncAccountsRequest {
   externalUserId: string;
 }
 
+export interface RenameAccountRequest {
+  userId: string;
+  accountId: string;
+  /** Raw nickname; blank clears it (normalized via {@link normalizeNickname}). */
+  nickname: string;
+}
+
+export interface DisconnectAccountRequest {
+  userId: string;
+  accountId: string;
+  /** Clerk id — Muapi scopes the revoke to this external user. */
+  externalUserId: string;
+}
+
 export class SocialPublishingService {
   private readonly muapi: SocialMuapiClient;
   private readonly upsert: SocialAccountUpserter;
   private readonly lister: SocialAccountLister;
+  private readonly getOwned: SocialAccountGetter;
+  private readonly rename: SocialAccountRenamer;
+  private readonly remove: SocialAccountRemover;
 
   constructor(config: SocialPublishingServiceConfig = {}) {
     this.muapi = config.muapi ?? defaultSocialMuapiClient;
     this.upsert = config.upsert ?? defaultUpsert;
     this.lister = config.list ?? defaultList;
+    this.getOwned = config.getOwned ?? defaultGetOwned;
+    this.rename = config.rename ?? defaultRename;
+    this.remove = config.remove ?? defaultRemove;
   }
 
   /**
@@ -209,6 +277,38 @@ export class SocialPublishingService {
   /** A user's connected accounts (for the /social page). */
   listAccounts(userId: string): Promise<SocialAccount[]> {
     return this.lister(userId);
+  }
+
+  /**
+   * Rename an account — a local friendly label only (you can't rename a real
+   * platform handle via API). Normalizes the input (blank clears it) and updates
+   * the row scoped to the owner. Throws if the row isn't found or isn't theirs.
+   */
+  async renameAccount(request: RenameAccountRequest): Promise<SocialAccount> {
+    const nickname = normalizeNickname(request.nickname);
+    const row = await this.rename(request.userId, request.accountId, nickname);
+    if (!row) {
+      throw new Error("Account not found");
+    }
+    return row;
+  }
+
+  /**
+   * Disconnect an account: revoke it on Muapi first, then delete our local row
+   * (so a later callback re-sync can't resurrect it). Ownership-scoped — throws
+   * before touching Muapi if the id isn't the user's. If the Muapi revoke fails
+   * the local row is kept, so the two never silently drift.
+   */
+  async disconnectAccount(request: DisconnectAccountRequest): Promise<void> {
+    const account = await this.getOwned(request.userId, request.accountId);
+    if (!account) {
+      throw new Error("Account not found");
+    }
+    await this.muapi.disconnectAccount(
+      account.muapiAccountId,
+      request.externalUserId,
+    );
+    await this.remove(request.userId, request.accountId);
   }
 }
 
@@ -265,6 +365,27 @@ class DefaultSocialMuapiClient implements SocialMuapiClient {
     const json = await res.json();
     return Array.isArray(json) ? (json as MuapiSocialAccount[]) : [];
   }
+
+  async disconnectAccount(
+    muapiAccountId: string,
+    externalUserId: string,
+  ): Promise<void> {
+    const key = await this.apiKey();
+    // DELETE /social/ext/accounts/{id} — liveness-verified 2026-07-28 (DEV-34):
+    // a bogus id returns a resource-specific 404 "Account not found", so the
+    // route exists. external_user_id scopes the revoke to the owner.
+    const res = await this.fetchFn(
+      `${this.baseUrl}/social/ext/accounts/${encodeURIComponent(muapiAccountId)}?external_user_id=${encodeURIComponent(externalUserId)}`,
+      { method: "DELETE", headers: { "x-api-key": key } },
+    );
+    // 404 = already gone on Muapi's side → idempotent success (we still drop our
+    // local row). Any other non-2xx is a real failure and must not delete locally.
+    if (!res.ok && res.status !== 404) {
+      throw new Error(
+        `Muapi disconnect failed (${res.status} ${res.statusText}): ${await res.text().catch(() => "")}`,
+      );
+    }
+  }
 }
 
 const defaultSocialMuapiClient: SocialMuapiClient = new DefaultSocialMuapiClient();
@@ -302,6 +423,54 @@ const defaultList: SocialAccountLister = async (userId) => {
     .from(socialAccounts)
     .where(eq(socialAccounts.userId, userId))
     .orderBy(desc(socialAccounts.connectedAt));
+};
+
+/** Default getter — one account by id, scoped to the owner (null if not theirs). */
+const defaultGetOwned: SocialAccountGetter = async (userId, accountId) => {
+  const [{ db }, { socialAccounts }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [row] = await db
+    .select()
+    .from(socialAccounts)
+    .where(
+      and(eq(socialAccounts.userId, userId), eq(socialAccounts.id, accountId)),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+/** Default renamer — set the nickname on an owned row; returns it, or null. */
+const defaultRename: SocialAccountRenamer = async (userId, accountId, nickname) => {
+  const [{ db }, { socialAccounts }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [row] = await db
+    .update(socialAccounts)
+    .set({ nickname })
+    .where(
+      and(eq(socialAccounts.userId, userId), eq(socialAccounts.id, accountId)),
+    )
+    .returning();
+  return row ?? null;
+};
+
+/** Default remover — delete an owned row (no-op if it isn't theirs). */
+const defaultRemove: SocialAccountRemover = async (userId, accountId) => {
+  const [{ db }, { socialAccounts }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  await db
+    .delete(socialAccounts)
+    .where(
+      and(eq(socialAccounts.userId, userId), eq(socialAccounts.id, accountId)),
+    );
 };
 
 export const socialPublishingService = new SocialPublishingService();

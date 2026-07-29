@@ -5,7 +5,8 @@
  *
  * Server component: auth + ensureLocalUser + list the user's connected accounts,
  * then hand a plain shape to the client card grid. In the (dashboard) group so
- * it reuses DashboardShell.
+ * it reuses DashboardShell. Rename/disconnect (DEV-34) mutate via /api/social/
+ * accounts and `router.refresh()` re-runs this list.
  */
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -38,6 +39,7 @@ export default async function SocialPage() {
       platform: account.platform,
       platformName: account.platformName,
       accountName: account.accountName,
+      nickname: account.nickname,
     }),
   );
 
