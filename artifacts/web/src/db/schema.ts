@@ -584,3 +584,82 @@ export const socialAccounts = pgTable(
 
 export type SocialAccount = typeof socialAccounts.$inferSelect;
 export type InsertSocialAccount = typeof socialAccounts.$inferInsert;
+
+// DEV-36: Publish Job (CONTEXT.md) — one attempt to publish an Asset Kit to a
+// connected social account through Muapi's `{platform}-publish` endpoint. Publish
+// is a Muapi model slug ($0.01) with the same submit→poll async shape as
+// generation, so a job carries the async `muapiRequestId` and advances
+// processing → completed/failed as we poll.
+//
+// History-friendly: `assetKitId`/`socialAccountId` are `onDelete: set null` (the
+// FIRST set-null refs in this schema — every other ref cascades) so disconnecting
+// an account or deleting a kit never erases the publish record. The denormalized
+// `title`/`mediaUrl` + `params` snapshot keep a row self-describing on its own.
+export const PUBLISH_JOB_STATUSES = [
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+] as const;
+export type PublishJobStatus = (typeof PUBLISH_JOB_STATUSES)[number];
+
+/**
+ * The exact body sent to Muapi's `{platform}-publish` endpoint, snapshotted on
+ * the job so Retry (AC #3) resubmits identical parameters and history shows
+ * precisely what was published. Shape matches the live `youtube-publish` schema
+ * (verified DEV-36); `account_id` is an integer per that schema.
+ */
+export interface PublishJobParams {
+  account_id: number;
+  media_url: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  privacy?: string;
+  category_id?: string;
+  made_for_kids?: boolean;
+}
+
+export const publishJobs = pgTable(
+  "publish_jobs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // SET NULL (not cascade): a deleted kit / disconnected account must not
+    // delete the publish record. Nullable is required for set-null.
+    assetKitId: text("asset_kit_id").references(() => assetKits.id, {
+      onDelete: "set null",
+    }),
+    socialAccountId: text("social_account_id").references(
+      () => socialAccounts.id,
+      { onDelete: "set null" },
+    ),
+    platform: text("platform", { enum: SOCIAL_PLATFORMS }).notNull(),
+    // Muapi's async request id from the submit call; null only if submit failed.
+    muapiRequestId: text("muapi_request_id"),
+    status: text("status", { enum: PUBLISH_JOB_STATUSES })
+      .notNull()
+      .default("processing"),
+    // Denormalized so a row is self-describing after set-null wipes the refs.
+    title: text("title").notNull(),
+    mediaUrl: text("media_url").notNull(),
+    // Exact publish params for Retry + audit.
+    params: jsonb("params").$type<PublishJobParams>().notNull(),
+    // The live post URL once completed.
+    resultUrl: text("result_url"),
+    error: text("error"),
+    cost: doublePrecision("cost").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [index("publish_jobs_user_id_idx").on(table.userId)],
+);
+
+export type PublishJob = typeof publishJobs.$inferSelect;
+export type InsertPublishJob = typeof publishJobs.$inferInsert;

@@ -1,6 +1,6 @@
 # Phase 4 — Social Publishing
 
-**Status**: In progress — STU-31 (DEV-35) built 2026-07-28 (connect flow + `social_accounts`); STU-32 (DEV-34) built 2026-07-28 (accounts management — rename + disconnect); STU-33…36 not started.
+**Status**: In progress — STU-31 (DEV-35) built 2026-07-28 (connect flow + `social_accounts`); STU-32 (DEV-34) built 2026-07-28 (accounts management — rename + disconnect); STU-33 (DEV-36) built 2026-07-29 (publish-to-YouTube — `publish_jobs` + publish/poll/retry service + `POST`/`GET /api/social/publish` + publish UI on `/social`); STU-34…36 not started.
 **Goal**: Connect social accounts and publish content directly from the app.
 
 > ⚠️ **Contract note (verified live 2026-07-28, DEV-35):** Muapi's social API is real and matches `muapi.ai/docs/social-publishing`. `POST /social/{youtube|tiktok|instagram}/connect-url` → `{ url }`; `GET /social/ext/accounts?external_user_id=…` → account array; publish endpoints `POST /{platform}-publish` ($0.01 each). **Muapi owns the OAuth callback itself** and only bounces the user to our `redirect_to` afterward, so our side stores **no OAuth tokens** — just the `muapiAccountId`. Instagram uses `instagram_business_*` scopes (Business/Creator account required). `platform` stored as a string enum, not the plan's "1/2/3".
@@ -8,7 +8,7 @@
 ## Slices
 - `STU-31`: Social account connection flow (OAuth via Muapi connect-url) — **BUILT (DEV-35, 2026-07-28)**: `social_accounts` table + `src/lib/social-publishing.ts` + `POST /api/social/connect` + `GET /api/social/callback` + minimal `/social` page. Static checks green; live OAuth is human-gated QA.
 - `STU-32`: Connected accounts management UI (list, rename, disconnect) — **BUILT (DEV-34, 2026-07-28)**: `nickname` column + `renameAccount`/`disconnectAccount` on `social-publishing.ts` + `PATCH`/`DELETE /api/social/accounts` + per-account rename/disconnect controls on `/social`. **Rename = local nickname** (no Muapi op); **disconnect = Muapi `DELETE /social/ext/accounts/{id}` (liveness-verified) + local delete**. Static checks green; live click-through is human-gated QA.
-- `STU-33`: Publish-to-YouTube flow
+- `STU-33`: Publish-to-YouTube flow — **BUILT (DEV-36, 2026-07-29)**: `publish_jobs` table + `buildYouTubePublishParams`/`publishAssetKit`/`refreshPublishJob`/`retryPublishJob`/`listPublishJobs` on `social-publishing.ts` + `POST`/`GET /api/social/publish` (submit/retry + advance-on-read polling) + Publish-to-YouTube UI on `/social`. **Contract verified live**: `youtube-publish` is a Muapi model slug ($0.01, submit→poll), required `account_id`(int)/`media_url`/`title`. Static checks green; live publish to a real channel is human-gated QA.
 - `STU-34`: Publish-to-TikTok flow
 - `STU-35`: Publish-to-Instagram flow
 - `STU-36`: Publishing history + status tracking

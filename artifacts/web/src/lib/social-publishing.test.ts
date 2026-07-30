@@ -17,6 +17,9 @@ import {
   mapMuapiAccount,
   normalizeNickname,
   MAX_NICKNAME_LENGTH,
+  resolvePrivacy,
+  buildYouTubePublishParams,
+  MAX_PUBLISH_TITLE_LENGTH,
   type SocialMuapiClient,
   type MuapiSocialAccount,
   type SocialAccountUpserter,
@@ -24,8 +27,14 @@ import {
   type SocialAccountGetter,
   type SocialAccountRenamer,
   type SocialAccountRemover,
+  type PublishMuapiClient,
 } from "./social-publishing.ts";
-import type { InsertSocialAccount, SocialAccount } from "@/db/schema";
+import type {
+  InsertPublishJob,
+  InsertSocialAccount,
+  PublishJob,
+  SocialAccount,
+} from "@/db/schema";
 
 function fakeRow(values: InsertSocialAccount): SocialAccount {
   return {
@@ -350,4 +359,420 @@ test("disconnectAccount does not delete the local row if Muapi revoke fails", as
     /Muapi disconnect failed/,
   );
   assert.equal(removed, false);
+});
+
+// --- DEV-36: publish (Asset Kit → YouTube) -------------------------------
+
+function ytAccount(): SocialAccount {
+  return fakeRow({
+    userId: "user_1",
+    platform: "youtube",
+    muapiAccountId: "42",
+    platformName: "YouTube",
+    accountName: "Acme Channel",
+  });
+}
+
+function fakeJob(values: InsertPublishJob): PublishJob {
+  return {
+    id: values.id ?? "job_1",
+    userId: values.userId,
+    assetKitId: values.assetKitId ?? null,
+    socialAccountId: values.socialAccountId ?? null,
+    platform: values.platform,
+    muapiRequestId: values.muapiRequestId ?? null,
+    status: values.status ?? "processing",
+    title: values.title,
+    mediaUrl: values.mediaUrl,
+    params: values.params,
+    resultUrl: values.resultUrl ?? null,
+    error: values.error ?? null,
+    cost: values.cost ?? 0,
+    createdAt: new Date("2026-07-29T00:00:00Z"),
+    completedAt: values.completedAt ?? null,
+  };
+}
+
+test("resolvePrivacy defaults to public, accepts the enum, rejects the rest", () => {
+  assert.equal(resolvePrivacy(), "public");
+  assert.equal(resolvePrivacy(""), "public");
+  assert.equal(resolvePrivacy("  unlisted "), "unlisted");
+  assert.equal(resolvePrivacy("private"), "private");
+  assert.throws(() => resolvePrivacy("secret"), /Unsupported privacy/);
+});
+
+test("buildYouTubePublishParams maps + trims, coercing the text account id to an integer", () => {
+  assert.deepEqual(
+    buildYouTubePublishParams({
+      muapiAccountId: "42",
+      mediaUrl: " https://cdn.example.com/v.mp4 ",
+      title: "  My Launch  ",
+      description: "  A great video  ",
+      tags: [" launch ", "", "sale"],
+      privacy: "unlisted",
+    }),
+    {
+      account_id: 42,
+      media_url: "https://cdn.example.com/v.mp4",
+      title: "My Launch",
+      privacy: "unlisted",
+      description: "A great video",
+      tags: ["launch", "sale"],
+    },
+  );
+});
+
+test("buildYouTubePublishParams omits optional fields when absent/blank", () => {
+  assert.deepEqual(
+    buildYouTubePublishParams({
+      muapiAccountId: "7",
+      mediaUrl: "https://cdn.example.com/v.mp4",
+      title: "Title",
+      description: "   ",
+      tags: ["  ", ""],
+    }),
+    { account_id: 7, media_url: "https://cdn.example.com/v.mp4", title: "Title", privacy: "public" },
+  );
+});
+
+test("buildYouTubePublishParams fails loud on a non-integer account id", () => {
+  assert.throws(
+    () =>
+      buildYouTubePublishParams({
+        muapiAccountId: "not-a-number",
+        mediaUrl: "https://cdn.example.com/v.mp4",
+        title: "Title",
+      }),
+    /account_id must be an integer/,
+  );
+});
+
+test("buildYouTubePublishParams rejects a bad media url, empty title, and overlong title", () => {
+  const base = { muapiAccountId: "1", title: "Title" };
+  assert.throws(
+    () => buildYouTubePublishParams({ ...base, mediaUrl: "ftp://x/v.mp4" }),
+    /media_url must be an http/,
+  );
+  assert.throws(
+    () => buildYouTubePublishParams({ muapiAccountId: "1", mediaUrl: "https://x/v.mp4", title: "  " }),
+    /title is required/,
+  );
+  assert.throws(
+    () =>
+      buildYouTubePublishParams({
+        muapiAccountId: "1",
+        mediaUrl: "https://x/v.mp4",
+        title: "x".repeat(MAX_PUBLISH_TITLE_LENGTH + 1),
+      }),
+    /characters or fewer/,
+  );
+});
+
+function fakePublishClient(
+  overrides: Partial<PublishMuapiClient> = {},
+): PublishMuapiClient {
+  return {
+    submitPublish: async () => ({ requestId: "req_1", cost: 0.01 }),
+    pollPublish: async () => ({ status: "processing", cost: 0 }),
+    ...overrides,
+  };
+}
+
+test("publishAssetKit owns the account, builds params, submits, and records a processing job", async () => {
+  const submits: Array<{ platform: string; params: unknown }> = [];
+  let inserted: InsertPublishJob | undefined;
+  const service = new SocialPublishingService({
+    getOwned: async (userId, accountId) => {
+      assert.equal(userId, "user_1");
+      assert.equal(accountId, "acc_1");
+      return ytAccount();
+    },
+    publishClient: fakePublishClient({
+      submitPublish: async (platform, params) => {
+        submits.push({ platform, params });
+        return { requestId: "req_99", cost: 0.01 };
+      },
+    }),
+    insertJob: async (values) => {
+      inserted = values;
+      return fakeJob(values);
+    },
+  });
+  const job = await service.publishAssetKit({
+    userId: "user_1",
+    socialAccountId: "acc_1",
+    assetKitId: "kit_1",
+    mediaUrl: "https://cdn.example.com/v.mp4",
+    title: "Launch",
+    privacy: "public",
+  });
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].platform, "youtube");
+  assert.deepEqual(submits[0].params, {
+    account_id: 42,
+    media_url: "https://cdn.example.com/v.mp4",
+    title: "Launch",
+    privacy: "public",
+  });
+  assert.equal(inserted?.status, "processing");
+  assert.equal(inserted?.muapiRequestId, "req_99");
+  assert.equal(inserted?.socialAccountId, "row_42");
+  assert.equal(inserted?.assetKitId, "kit_1");
+  assert.equal(inserted?.cost, 0.01);
+  assert.equal(job.status, "processing");
+});
+
+test("publishAssetKit rejects a non-YouTube account (this slice) without submitting", async () => {
+  let submitted = false;
+  const service = new SocialPublishingService({
+    getOwned: async () =>
+      fakeRow({
+        userId: "user_1",
+        platform: "tiktok",
+        muapiAccountId: "9",
+        platformName: "TikTok",
+        accountName: "TT",
+      }),
+    publishClient: fakePublishClient({
+      submitPublish: async () => {
+        submitted = true;
+        return { requestId: "x", cost: 0 };
+      },
+    }),
+  });
+  await assert.rejects(
+    service.publishAssetKit({
+      userId: "user_1",
+      socialAccountId: "acc_1",
+      assetKitId: "kit_1",
+      mediaUrl: "https://cdn.example.com/v.mp4",
+      title: "Launch",
+    }),
+    /Only YouTube publishing is supported/,
+  );
+  assert.equal(submitted, false);
+});
+
+test("publishAssetKit rejects an unowned account and never submits", async () => {
+  let submitted = false;
+  const service = new SocialPublishingService({
+    getOwned: async () => null,
+    publishClient: fakePublishClient({
+      submitPublish: async () => {
+        submitted = true;
+        return { requestId: "x", cost: 0 };
+      },
+    }),
+  });
+  await assert.rejects(
+    service.publishAssetKit({
+      userId: "user_1",
+      socialAccountId: "nope",
+      assetKitId: "kit_1",
+      mediaUrl: "https://cdn.example.com/v.mp4",
+      title: "Launch",
+    }),
+    /Account not found/,
+  );
+  assert.equal(submitted, false);
+});
+
+test("refreshPublishJob persists a completed transition with the result URL", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const processing = fakeJob({
+    userId: "user_1",
+    platform: "youtube",
+    muapiRequestId: "req_1",
+    status: "processing",
+    title: "T",
+    mediaUrl: "https://x/v.mp4",
+    params,
+    cost: 0.01,
+  });
+  let patch: unknown = null;
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async (requestId) => {
+        assert.equal(requestId, "req_1");
+        return { status: "completed", resultUrl: "https://youtu.be/abc", cost: 0 };
+      },
+    }),
+    updateJob: async (_userId, _jobId, p) => {
+      patch = p;
+      return fakeJob({ ...processing, ...p, params });
+    },
+  });
+  const job = await service.refreshPublishJob("user_1", "job_1");
+  assert.equal(job.status, "completed");
+  assert.equal(job.resultUrl, "https://youtu.be/abc");
+  assert.equal((patch as { cost: number }).cost, 0.01);
+  assert.ok((patch as { completedAt: Date }).completedAt instanceof Date);
+});
+
+test("refreshPublishJob persists a failed transition with the error", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const processing = fakeJob({
+    userId: "user_1",
+    platform: "youtube",
+    muapiRequestId: "req_1",
+    status: "processing",
+    title: "T",
+    mediaUrl: "https://x/v.mp4",
+    params,
+  });
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "failed", error: "quota exceeded", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params }),
+  });
+  const job = await service.refreshPublishJob("user_1", "job_1");
+  assert.equal(job.status, "failed");
+  assert.equal(job.error, "quota exceeded");
+});
+
+test("refreshPublishJob leaves a still-processing job untouched (no terminal write)", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const processing = fakeJob({
+    userId: "user_1",
+    platform: "youtube",
+    muapiRequestId: "req_1",
+    status: "processing",
+    title: "T",
+    mediaUrl: "https://x/v.mp4",
+    params,
+  });
+  let updated = false;
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "processing", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => {
+      updated = true;
+      return fakeJob({ ...processing, ...p, params });
+    },
+  });
+  const job = await service.refreshPublishJob("user_1", "job_1");
+  assert.equal(job.status, "processing");
+  assert.equal(updated, false);
+});
+
+test("refreshPublishJob never polls a job that is not processing", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const done = fakeJob({
+    userId: "user_1",
+    platform: "youtube",
+    muapiRequestId: "req_1",
+    status: "completed",
+    title: "T",
+    mediaUrl: "https://x/v.mp4",
+    params,
+    resultUrl: "https://youtu.be/abc",
+  });
+  let polled = false;
+  const service = new SocialPublishingService({
+    getJob: async () => done,
+    publishClient: fakePublishClient({
+      pollPublish: async () => {
+        polled = true;
+        return { status: "completed", cost: 0 };
+      },
+    }),
+  });
+  const job = await service.refreshPublishJob("user_1", "job_1");
+  assert.equal(job.status, "completed");
+  assert.equal(polled, false);
+});
+
+test("listPublishJobs advances processing jobs on read and isolates poll errors", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const good = fakeJob({
+    id: "job_good", userId: "user_1", platform: "youtube", muapiRequestId: "req_good",
+    status: "processing", title: "T", mediaUrl: "https://x/v.mp4", params,
+  });
+  const bad = fakeJob({
+    id: "job_bad", userId: "user_1", platform: "youtube", muapiRequestId: "req_bad",
+    status: "processing", title: "T", mediaUrl: "https://x/v.mp4", params,
+  });
+  const settled = fakeJob({
+    id: "job_done", userId: "user_1", platform: "youtube", muapiRequestId: "req_done",
+    status: "completed", title: "T", mediaUrl: "https://x/v.mp4", params, resultUrl: "https://youtu.be/z",
+  });
+  const service = new SocialPublishingService({
+    listJobs: async () => [good, bad, settled],
+    publishClient: fakePublishClient({
+      pollPublish: async (requestId) => {
+        if (requestId === "req_bad") throw new Error("network blip");
+        return { status: "completed", resultUrl: "https://youtu.be/g", cost: 0 };
+      },
+    }),
+    updateJob: async (_u, jobId, p) =>
+      fakeJob({ ...(jobId === "job_good" ? good : bad), ...p, params }),
+  });
+  const jobs = await service.listPublishJobs("user_1");
+  assert.equal(jobs[0].status, "completed"); // good advanced
+  assert.equal(jobs[1].status, "processing"); // bad isolated, unchanged
+  assert.equal(jobs[2].status, "completed"); // settled untouched
+});
+
+test("retryPublishJob resubmits the stored params and resets the same row to processing", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  const failed = fakeJob({
+    userId: "user_1", platform: "youtube", muapiRequestId: "req_old",
+    status: "failed", title: "T", mediaUrl: "https://x/v.mp4", params,
+    error: "boom", cost: 0.01,
+  });
+  let submittedParams: unknown = null;
+  let patch: unknown = null;
+  const service = new SocialPublishingService({
+    getJob: async () => failed,
+    publishClient: fakePublishClient({
+      submitPublish: async (_platform, p) => {
+        submittedParams = p;
+        return { requestId: "req_new", cost: 0.01 };
+      },
+    }),
+    updateJob: async (_u, _j, p) => {
+      patch = p;
+      return fakeJob({ ...failed, ...p, params });
+    },
+  });
+  const job = await service.retryPublishJob("user_1", "job_1");
+  assert.deepEqual(submittedParams, params); // exact same parameters (AC #3)
+  assert.equal(job.status, "processing");
+  assert.equal((patch as { muapiRequestId: string }).muapiRequestId, "req_new");
+  assert.equal((patch as { error: string | null }).error, null);
+  assert.equal((patch as { resultUrl: string | null }).resultUrl, null);
+  assert.equal((patch as { cost: number }).cost, 0.02); // accumulated
+});
+
+test("retryPublishJob refuses to retry a job that is not failed", async () => {
+  const params = { account_id: 42, media_url: "https://x/v.mp4", title: "T", privacy: "public" };
+  let submitted = false;
+  const service = new SocialPublishingService({
+    getJob: async () =>
+      fakeJob({
+        userId: "user_1", platform: "youtube", muapiRequestId: "req_1",
+        status: "processing", title: "T", mediaUrl: "https://x/v.mp4", params,
+      }),
+    publishClient: fakePublishClient({
+      submitPublish: async () => {
+        submitted = true;
+        return { requestId: "x", cost: 0 };
+      },
+    }),
+  });
+  await assert.rejects(
+    service.retryPublishJob("user_1", "job_1"),
+    /Only failed publishes can be retried/,
+  );
+  assert.equal(submitted, false);
+});
+
+test("listPublishJobs passes through the DB lister for a user with no in-flight jobs", async () => {
+  const service = new SocialPublishingService({ listJobs: async () => [] });
+  assert.deepEqual(await service.listPublishJobs("user_1"), []);
 });

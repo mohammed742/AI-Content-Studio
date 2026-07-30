@@ -11,9 +11,13 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
+import { and, desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { assetKits } from "@/db/schema";
 import { ensureLocalUser } from "@/lib/local-user";
 import { socialPublishingService } from "@/lib/social-publishing";
 import { SocialConnections } from "@/components/social/social-connections";
+import { SocialPublish } from "@/components/social/social-publish";
 
 export const dynamic = "force-dynamic";
 
@@ -33,19 +37,49 @@ export default async function SocialPage() {
     redirect("/sign-in");
   }
 
-  const accounts = (await socialPublishingService.listAccounts(user.id)).map(
-    (account) => ({
-      id: account.id,
-      platform: account.platform,
-      platformName: account.platformName,
-      accountName: account.accountName,
-      nickname: account.nickname,
+  const allAccounts = await socialPublishingService.listAccounts(user.id);
+  const accounts = allAccounts.map((account) => ({
+    id: account.id,
+    platform: account.platform,
+    platformName: account.platformName,
+    accountName: account.accountName,
+    nickname: account.nickname,
+  }));
+
+  // Publish-to-YouTube inputs: connected YouTube channels, ready video kits, and
+  // the user's publish jobs (listPublishJobs advances any in-flight job on read).
+  const youtubeAccounts = allAccounts
+    .filter((a) => a.platform === "youtube")
+    .map((a) => ({ id: a.id, label: a.nickname?.trim() || a.accountName }));
+
+  const videoKits = (
+    await db
+      .select({ id: assetKits.id, title: assetKits.title })
+      .from(assetKits)
+      .where(and(eq(assetKits.userId, user.id), eq(assetKits.mediaType, "video")))
+      .orderBy(desc(assetKits.createdAt))
+  ).map((k) => ({ id: k.id, title: k.title }));
+
+  const jobs = (await socialPublishingService.listPublishJobs(user.id)).map(
+    (job) => ({
+      id: job.id,
+      status: job.status,
+      title: job.title,
+      platform: job.platform,
+      resultUrl: job.resultUrl,
+      error: job.error,
+      createdAt: job.createdAt.toISOString(),
     }),
   );
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-4xl space-y-10">
       <SocialConnections accounts={accounts} />
+      <SocialPublish
+        youtubeAccounts={youtubeAccounts}
+        videoKits={videoKits}
+        initialJobs={jobs}
+      />
     </div>
   );
 }

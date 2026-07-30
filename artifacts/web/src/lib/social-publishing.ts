@@ -18,7 +18,14 @@
  * network or DB. The default singleton wires the real endpoints + a lazy
  * `MUAPI_API_KEY` read so the module still imports under the bare Node runner.
  */
-import type { InsertSocialAccount, SocialAccount, SocialPlatform } from "@/db/schema";
+import type {
+  InsertPublishJob,
+  InsertSocialAccount,
+  PublishJob,
+  PublishJobParams,
+  SocialAccount,
+  SocialPlatform,
+} from "@/db/schema";
 
 /** Muapi's social publishing base — same host as the generation API. */
 export const SOCIAL_MUAPI_BASE_URL = "https://api.muapi.ai/api/v1";
@@ -144,6 +151,87 @@ export function normalizeNickname(value: string): string | null {
   return trimmed;
 }
 
+// --- DEV-36: publish (Asset Kit → connected account) ----------------------
+
+/** YouTube's video-privacy options (the live `youtube-publish` `privacy` enum). */
+export const PUBLISH_PRIVACIES = ["public", "private", "unlisted"] as const;
+export type PublishPrivacy = (typeof PUBLISH_PRIVACIES)[number];
+
+/** YouTube caps: title ≤ 100 chars, description ≤ 5000. Validate before spending. */
+export const MAX_PUBLISH_TITLE_LENGTH = 100;
+export const MAX_PUBLISH_DESCRIPTION_LENGTH = 5000;
+
+/** Narrow/normalize a privacy value, defaulting to `public`, or throw. */
+export function resolvePrivacy(value?: string): PublishPrivacy {
+  const v = (value ?? "").trim() || "public";
+  if ((PUBLISH_PRIVACIES as readonly string[]).includes(v)) {
+    return v as PublishPrivacy;
+  }
+  throw new Error(`Unsupported privacy: ${value}`);
+}
+
+export interface BuildYouTubePublishParamsInput {
+  /** Muapi account id (text in our DB, integer in Muapi's schema). */
+  muapiAccountId: string;
+  mediaUrl: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  privacy?: string;
+}
+
+/**
+ * Build + validate the `youtube-publish` request body from a connected account
+ * and the fields the user chose. Fail-loud on every axis so a bad request never
+ * reaches Muapi (and never spends the $0.01). Coerces our text `muapiAccountId`
+ * to the integer `account_id` the live schema requires (verified DEV-36).
+ */
+export function buildYouTubePublishParams(
+  input: BuildYouTubePublishParamsInput,
+): PublishJobParams {
+  const accountId = Number(input.muapiAccountId);
+  if (!Number.isInteger(accountId)) {
+    throw new Error(
+      `account_id must be an integer (got ${JSON.stringify(input.muapiAccountId)})`,
+    );
+  }
+  const mediaUrl = input.mediaUrl?.trim();
+  if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) {
+    throw new Error("media_url must be an http(s) URL");
+  }
+  const title = input.title?.trim();
+  if (!title) {
+    throw new Error("title is required");
+  }
+  if (title.length > MAX_PUBLISH_TITLE_LENGTH) {
+    throw new Error(
+      `title must be ${MAX_PUBLISH_TITLE_LENGTH} characters or fewer`,
+    );
+  }
+  const params: PublishJobParams = {
+    account_id: accountId,
+    media_url: mediaUrl,
+    title,
+    privacy: resolvePrivacy(input.privacy),
+  };
+  const description = input.description?.trim();
+  if (description) {
+    if (description.length > MAX_PUBLISH_DESCRIPTION_LENGTH) {
+      throw new Error(
+        `description must be ${MAX_PUBLISH_DESCRIPTION_LENGTH} characters or fewer`,
+      );
+    }
+    params.description = description;
+  }
+  if (input.tags?.length) {
+    const tags = input.tags.map((t) => t.trim()).filter(Boolean);
+    if (tags.length) {
+      params.tags = tags;
+    }
+  }
+  return params;
+}
+
 // --- injectable seams -----------------------------------------------------
 
 /**
@@ -186,6 +274,57 @@ export type SocialAccountRemover = (
   accountId: string,
 ) => Promise<void>;
 
+/** Result of submitting a publish job to Muapi (before polling). */
+export interface PublishSubmitResult {
+  requestId: string;
+  cost: number;
+}
+/** One poll of a publish job's async result. Non-terminal states → `processing`. */
+export interface PublishPollResult {
+  status: "processing" | "completed" | "failed";
+  /** The live post URL, present once `completed`. */
+  resultUrl?: string;
+  error?: string;
+  cost: number;
+}
+
+/**
+ * Muapi's publish surface — a separate seam from {@link SocialMuapiClient} so the
+ * connect/disconnect fakes don't have to know about publishing. Publish is a
+ * Muapi model slug (`{platform}-publish`, $0.01) with the standard submit→poll
+ * async shape, so this splits the two halves for advance-on-read polling.
+ */
+export interface PublishMuapiClient {
+  submitPublish(
+    platform: SocialPlatform,
+    params: PublishJobParams,
+  ): Promise<PublishSubmitResult>;
+  pollPublish(requestId: string): Promise<PublishPollResult>;
+}
+
+/** Fields we ever patch on an in-flight publish job. */
+export type PublishJobPatch = Partial<
+  Pick<
+    PublishJob,
+    "status" | "muapiRequestId" | "resultUrl" | "error" | "cost" | "completedAt"
+  >
+>;
+/** Insert a publish job row. */
+export type PublishJobInserter = (values: InsertPublishJob) => Promise<PublishJob>;
+/** Update an owned publish job (scoped by user + id); null if not found. */
+export type PublishJobUpdater = (
+  userId: string,
+  jobId: string,
+  patch: PublishJobPatch,
+) => Promise<PublishJob | null>;
+/** Fetch one owned publish job, or null. */
+export type PublishJobGetter = (
+  userId: string,
+  jobId: string,
+) => Promise<PublishJob | null>;
+/** List a user's publish jobs, newest first. */
+export type PublishJobLister = (userId: string) => Promise<PublishJob[]>;
+
 export interface SocialPublishingServiceConfig {
   muapi?: SocialMuapiClient;
   upsert?: SocialAccountUpserter;
@@ -193,6 +332,24 @@ export interface SocialPublishingServiceConfig {
   getOwned?: SocialAccountGetter;
   rename?: SocialAccountRenamer;
   remove?: SocialAccountRemover;
+  publishClient?: PublishMuapiClient;
+  insertJob?: PublishJobInserter;
+  updateJob?: PublishJobUpdater;
+  getJob?: PublishJobGetter;
+  listJobs?: PublishJobLister;
+}
+
+export interface PublishAssetKitRequest {
+  userId: string;
+  socialAccountId: string;
+  /** The Asset Kit being published (stored on the job for history/retry). */
+  assetKitId: string;
+  /** The kit's R2 media URL (the route resolves this from the owned kit). */
+  mediaUrl: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  privacy?: string;
 }
 
 export interface GetConnectUrlRequest {
@@ -227,6 +384,11 @@ export class SocialPublishingService {
   private readonly getOwned: SocialAccountGetter;
   private readonly rename: SocialAccountRenamer;
   private readonly remove: SocialAccountRemover;
+  private readonly publishClient: PublishMuapiClient;
+  private readonly insertJob: PublishJobInserter;
+  private readonly updateJob: PublishJobUpdater;
+  private readonly getJob: PublishJobGetter;
+  private readonly listJobs: PublishJobLister;
 
   constructor(config: SocialPublishingServiceConfig = {}) {
     this.muapi = config.muapi ?? defaultSocialMuapiClient;
@@ -235,6 +397,11 @@ export class SocialPublishingService {
     this.getOwned = config.getOwned ?? defaultGetOwned;
     this.rename = config.rename ?? defaultRename;
     this.remove = config.remove ?? defaultRemove;
+    this.publishClient = config.publishClient ?? defaultSocialMuapiClient;
+    this.insertJob = config.insertJob ?? defaultInsertJob;
+    this.updateJob = config.updateJob ?? defaultUpdateJob;
+    this.getJob = config.getJob ?? defaultGetJob;
+    this.listJobs = config.listJobs ?? defaultListJobs;
   }
 
   /**
@@ -310,12 +477,160 @@ export class SocialPublishingService {
     );
     await this.remove(request.userId, request.accountId);
   }
+
+  // --- DEV-36: publish ----------------------------------------------------
+
+  /**
+   * Publish an Asset Kit to a connected account: resolve + own the account,
+   * build the platform params (fail-loud before spending), submit to Muapi, and
+   * record a `processing` job carrying the async request id + a params snapshot
+   * (for Retry + history). Does NOT poll — the job advances on read.
+   *
+   * YouTube-only this slice (DEV-36); TikTok/Instagram are DEV-37/38.
+   */
+  async publishAssetKit(request: PublishAssetKitRequest): Promise<PublishJob> {
+    const account = await this.getOwned(request.userId, request.socialAccountId);
+    if (!account) {
+      throw new Error("Account not found");
+    }
+    if (account.platform !== "youtube") {
+      throw new Error("Only YouTube publishing is supported");
+    }
+    const params = buildYouTubePublishParams({
+      muapiAccountId: account.muapiAccountId,
+      mediaUrl: request.mediaUrl,
+      title: request.title,
+      description: request.description,
+      tags: request.tags,
+      privacy: request.privacy,
+    });
+    const submit = await this.publishClient.submitPublish(account.platform, params);
+    return this.insertJob({
+      userId: request.userId,
+      assetKitId: request.assetKitId,
+      socialAccountId: account.id,
+      platform: account.platform,
+      muapiRequestId: submit.requestId,
+      status: "processing",
+      title: params.title,
+      mediaUrl: params.media_url,
+      params,
+      cost: submit.cost,
+    });
+  }
+
+  /**
+   * Poll one owned job once and persist any terminal transition. A no-op for a
+   * job that isn't `processing` (or has no request id).
+   */
+  async refreshPublishJob(userId: string, jobId: string): Promise<PublishJob> {
+    const job = await this.getJob(userId, jobId);
+    if (!job) {
+      throw new Error("Publish job not found");
+    }
+    return this.advanceJob(job);
+  }
+
+  /** Poll + persist for a single job. Assumes the job is already owned. */
+  private async advanceJob(job: PublishJob): Promise<PublishJob> {
+    if (job.status !== "processing" || !job.muapiRequestId) {
+      return job;
+    }
+    const poll = await this.publishClient.pollPublish(job.muapiRequestId);
+    const cost = job.cost + poll.cost;
+    if (poll.status === "completed") {
+      return (
+        (await this.updateJob(job.userId, job.id, {
+          status: "completed",
+          resultUrl: poll.resultUrl ?? null,
+          error: null,
+          cost,
+          completedAt: new Date(),
+        })) ?? job
+      );
+    }
+    if (poll.status === "failed") {
+      return (
+        (await this.updateJob(job.userId, job.id, {
+          status: "failed",
+          error: poll.error ?? "Publish failed",
+          cost,
+          completedAt: new Date(),
+        })) ?? job
+      );
+    }
+    // Still processing — persist incremental cost only if Muapi reported some.
+    if (poll.cost > 0) {
+      return (await this.updateJob(job.userId, job.id, { cost })) ?? job;
+    }
+    return job;
+  }
+
+  /**
+   * A user's publish jobs, newest first, advancing any `processing` job on read
+   * (so the /social page's poll drives status without a separate cron). A poll
+   * error for one job is isolated — it stays `processing` rather than breaking
+   * the whole list.
+   */
+  async listPublishJobs(userId: string): Promise<PublishJob[]> {
+    const jobs = await this.listJobs(userId);
+    return Promise.all(
+      jobs.map(async (job) => {
+        if (job.status !== "processing" || !job.muapiRequestId) {
+          return job;
+        }
+        try {
+          return await this.advanceJob(job);
+        } catch {
+          return job;
+        }
+      }),
+    );
+  }
+
+  /**
+   * Retry a failed publish by resubmitting the exact stored params (AC #3) and
+   * resetting the same row to `processing` with a fresh request id — one row per
+   * publish intent, so history stays clean.
+   */
+  async retryPublishJob(userId: string, jobId: string): Promise<PublishJob> {
+    const job = await this.getJob(userId, jobId);
+    if (!job) {
+      throw new Error("Publish job not found");
+    }
+    if (job.status !== "failed") {
+      throw new Error("Only failed publishes can be retried");
+    }
+    const submit = await this.publishClient.submitPublish(job.platform, job.params);
+    return (
+      (await this.updateJob(userId, jobId, {
+        status: "processing",
+        muapiRequestId: submit.requestId,
+        error: null,
+        resultUrl: null,
+        completedAt: null,
+        cost: job.cost + submit.cost,
+      })) ?? job
+    );
+  }
 }
 
 // --- default (real) seams -------------------------------------------------
 
+/** Read COGS from the `X-MuAPI-Cost-USD` header, falling back to the body. */
+function readCost(res: Response, body: { cost?: { amount_usd?: number } }): number {
+  const header = res.headers.get("X-MuAPI-Cost-USD");
+  if (header) {
+    const parsed = Number.parseFloat(header);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return body.cost?.amount_usd ?? 0;
+}
+
 /** The live Muapi social client. Lazy env read keeps the module test-safe. */
-class DefaultSocialMuapiClient implements SocialMuapiClient {
+class DefaultSocialMuapiClient implements SocialMuapiClient, PublishMuapiClient {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
 
@@ -386,9 +701,70 @@ class DefaultSocialMuapiClient implements SocialMuapiClient {
       );
     }
   }
+
+  async submitPublish(
+    platform: SocialPlatform,
+    params: PublishJobParams,
+  ): Promise<PublishSubmitResult> {
+    const key = await this.apiKey();
+    // Publish is a Muapi model slug: POST /{platform}-publish → { request_id }.
+    // Verified live 2026-07-28 (DEV-36) for youtube-publish; $0.01 each.
+    const res = await this.fetchFn(`${this.baseUrl}/${platform}-publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `Muapi publish submit failed (${res.status} ${res.statusText}): ${await res.text().catch(() => "")}`,
+      );
+    }
+    const json = (await res.json()) as {
+      request_id?: string;
+      cost?: { amount_usd?: number };
+    };
+    const requestId = json.request_id ?? "";
+    if (!requestId) {
+      throw new Error("Muapi publish submit did not return a request_id");
+    }
+    return { requestId, cost: readCost(res, json) };
+  }
+
+  async pollPublish(requestId: string): Promise<PublishPollResult> {
+    const key = await this.apiKey();
+    const res = await this.fetchFn(
+      `${this.baseUrl}/predictions/${encodeURIComponent(requestId)}/result`,
+      { headers: { "x-api-key": key } },
+    );
+    if (!res.ok) {
+      throw new Error(
+        `Muapi publish poll failed (${res.status} ${res.statusText}): ${await res.text().catch(() => "")}`,
+      );
+    }
+    const json = (await res.json()) as {
+      status?: string;
+      outputs?: string[];
+      error?: string;
+      result_url?: string;
+      url?: string;
+      cost?: { amount_usd?: number };
+    };
+    const cost = readCost(res, json);
+    if (json.status === "completed") {
+      // The live post URL. Publish completion is human-gated QA (needs a real
+      // OAuth'd channel), so read the most likely fields defensively.
+      const resultUrl =
+        json.outputs?.[0] ?? json.result_url ?? json.url ?? "";
+      return { status: "completed", resultUrl, cost };
+    }
+    if (json.status === "failed" || json.status === "cancelled") {
+      return { status: "failed", error: json.error ?? "Publish failed", cost };
+    }
+    return { status: "processing", cost };
+  }
 }
 
-const defaultSocialMuapiClient: SocialMuapiClient = new DefaultSocialMuapiClient();
+const defaultSocialMuapiClient = new DefaultSocialMuapiClient();
 
 /** Default upsert — idempotent on the (user, Muapi account) unique index. */
 const defaultUpsert: SocialAccountUpserter = async (values) => {
@@ -471,6 +847,60 @@ const defaultRemove: SocialAccountRemover = async (userId, accountId) => {
     .where(
       and(eq(socialAccounts.userId, userId), eq(socialAccounts.id, accountId)),
     );
+};
+
+/** Default insert — a new publish job row. */
+const defaultInsertJob: PublishJobInserter = async (values) => {
+  const [{ db }, { publishJobs }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+  ]);
+  const [row] = await db.insert(publishJobs).values(values).returning();
+  return row;
+};
+
+/** Default update — patch an owned job (scoped by user + id); null if not found. */
+const defaultUpdateJob: PublishJobUpdater = async (userId, jobId, patch) => {
+  const [{ db }, { publishJobs }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [row] = await db
+    .update(publishJobs)
+    .set(patch)
+    .where(and(eq(publishJobs.userId, userId), eq(publishJobs.id, jobId)))
+    .returning();
+  return row ?? null;
+};
+
+/** Default getter — one owned job by id (null if not theirs). */
+const defaultGetJob: PublishJobGetter = async (userId, jobId) => {
+  const [{ db }, { publishJobs }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [row] = await db
+    .select()
+    .from(publishJobs)
+    .where(and(eq(publishJobs.userId, userId), eq(publishJobs.id, jobId)))
+    .limit(1);
+  return row ?? null;
+};
+
+/** Default lister — a user's publish jobs, newest first. */
+const defaultListJobs: PublishJobLister = async (userId) => {
+  const [{ db }, { publishJobs }, { desc, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  return db
+    .select()
+    .from(publishJobs)
+    .where(eq(publishJobs.userId, userId))
+    .orderBy(desc(publishJobs.createdAt));
 };
 
 export const socialPublishingService = new SocialPublishingService();
