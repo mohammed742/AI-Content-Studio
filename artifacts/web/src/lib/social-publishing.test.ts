@@ -20,6 +20,9 @@ import {
   resolvePrivacy,
   buildYouTubePublishParams,
   MAX_PUBLISH_TITLE_LENGTH,
+  resolvePrivacyLevel,
+  buildTikTokPublishParams,
+  MAX_TIKTOK_CAPTION_LENGTH,
   type SocialMuapiClient,
   type MuapiSocialAccount,
   type SocialAccountUpserter,
@@ -468,6 +471,79 @@ test("buildYouTubePublishParams rejects a bad media url, empty title, and overlo
   );
 });
 
+test("resolvePrivacyLevel defaults to PUBLIC_TO_EVERYONE, accepts the enum, rejects the rest", () => {
+  assert.equal(resolvePrivacyLevel(), "PUBLIC_TO_EVERYONE");
+  assert.equal(resolvePrivacyLevel(""), "PUBLIC_TO_EVERYONE");
+  assert.equal(resolvePrivacyLevel(" SELF_ONLY "), "SELF_ONLY");
+  assert.equal(resolvePrivacyLevel("MUTUAL_FOLLOW_FRIENDS"), "MUTUAL_FOLLOW_FRIENDS");
+  assert.throws(() => resolvePrivacyLevel("public"), /Unsupported privacy_level/);
+});
+
+test("buildTikTokPublishParams maps the caption + defaults toggles open and AI-generated true", () => {
+  assert.deepEqual(
+    buildTikTokPublishParams({
+      muapiAccountId: "42",
+      mediaUrl: " https://cdn.example.com/v.mp4 ",
+      title: "  Check this out  ",
+      privacyLevel: "SELF_ONLY",
+    }),
+    {
+      account_id: 42,
+      media_url: "https://cdn.example.com/v.mp4",
+      title: "Check this out",
+      privacy_level: "SELF_ONLY",
+      allow_comment: true,
+      allow_duet: true,
+      allow_stitch: true,
+      is_ai_generated: true,
+    },
+  );
+});
+
+test("buildTikTokPublishParams omits a blank caption and honors explicit toggles", () => {
+  assert.deepEqual(
+    buildTikTokPublishParams({
+      muapiAccountId: "7",
+      mediaUrl: "https://cdn.example.com/v.mp4",
+      title: "   ",
+      allowComment: false,
+      allowDuet: false,
+      allowStitch: false,
+      isAiGenerated: false,
+    }),
+    {
+      account_id: 7,
+      media_url: "https://cdn.example.com/v.mp4",
+      privacy_level: "PUBLIC_TO_EVERYONE",
+      allow_comment: false,
+      allow_duet: false,
+      allow_stitch: false,
+      is_ai_generated: false,
+    },
+  );
+});
+
+test("buildTikTokPublishParams fails loud on a non-integer account, bad url, and overlong caption", () => {
+  assert.throws(
+    () =>
+      buildTikTokPublishParams({ muapiAccountId: "nope", mediaUrl: "https://x/v.mp4" }),
+    /account_id must be an integer/,
+  );
+  assert.throws(
+    () => buildTikTokPublishParams({ muapiAccountId: "1", mediaUrl: "ftp://x/v.mp4" }),
+    /media_url must be an http/,
+  );
+  assert.throws(
+    () =>
+      buildTikTokPublishParams({
+        muapiAccountId: "1",
+        mediaUrl: "https://x/v.mp4",
+        title: "x".repeat(MAX_TIKTOK_CAPTION_LENGTH + 1),
+      }),
+    /caption must be .* or fewer/,
+  );
+});
+
 function fakePublishClient(
   overrides: Partial<PublishMuapiClient> = {},
 ): PublishMuapiClient {
@@ -522,16 +598,95 @@ test("publishAssetKit owns the account, builds params, submits, and records a pr
   assert.equal(job.status, "processing");
 });
 
-test("publishAssetKit rejects a non-YouTube account (this slice) without submitting", async () => {
-  let submitted = false;
+test("publishAssetKit publishes a TikTok account with tiktok params + caption title", async () => {
+  const submits: Array<{ platform: string; params: unknown }> = [];
+  let inserted: InsertPublishJob | undefined;
   const service = new SocialPublishingService({
     getOwned: async () =>
       fakeRow({
         userId: "user_1",
         platform: "tiktok",
-        muapiAccountId: "9",
+        muapiAccountId: "77",
         platformName: "TikTok",
-        accountName: "TT",
+        accountName: "Acme TikTok",
+      }),
+    publishClient: fakePublishClient({
+      submitPublish: async (platform, params) => {
+        submits.push({ platform, params });
+        return { requestId: "req_tt", cost: 0.02 };
+      },
+    }),
+    insertJob: async (values) => {
+      inserted = values;
+      return fakeJob(values);
+    },
+  });
+  const job = await service.publishAssetKit({
+    userId: "user_1",
+    socialAccountId: "acc_1",
+    assetKitId: "kit_1",
+    mediaUrl: "https://cdn.example.com/v.mp4",
+    title: "New drop 🎉",
+    privacyLevel: "SELF_ONLY",
+    allowStitch: false,
+  });
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].platform, "tiktok");
+  assert.deepEqual(submits[0].params, {
+    account_id: 77,
+    media_url: "https://cdn.example.com/v.mp4",
+    title: "New drop 🎉",
+    privacy_level: "SELF_ONLY",
+    allow_comment: true,
+    allow_duet: true,
+    allow_stitch: false,
+    is_ai_generated: true,
+  });
+  assert.equal(inserted?.platform, "tiktok");
+  assert.equal(inserted?.title, "New drop 🎉");
+  assert.equal(inserted?.cost, 0.02);
+  assert.equal(job.status, "processing");
+});
+
+test("publishAssetKit falls back to a stable label when the TikTok caption is blank", async () => {
+  let inserted: InsertPublishJob | undefined;
+  const service = new SocialPublishingService({
+    getOwned: async () =>
+      fakeRow({
+        userId: "user_1",
+        platform: "tiktok",
+        muapiAccountId: "77",
+        platformName: "TikTok",
+        accountName: "Acme TikTok",
+      }),
+    publishClient: fakePublishClient({
+      submitPublish: async () => ({ requestId: "req_tt", cost: 0.02 }),
+    }),
+    insertJob: async (values) => {
+      inserted = values;
+      return fakeJob(values);
+    },
+  });
+  await service.publishAssetKit({
+    userId: "user_1",
+    socialAccountId: "acc_1",
+    assetKitId: "kit_1",
+    mediaUrl: "https://cdn.example.com/v.mp4",
+  });
+  assert.equal(inserted?.title, "Untitled TikTok video");
+  assert.equal(inserted?.params.title, undefined);
+});
+
+test("publishAssetKit rejects an Instagram account (not available yet) without submitting", async () => {
+  let submitted = false;
+  const service = new SocialPublishingService({
+    getOwned: async () =>
+      fakeRow({
+        userId: "user_1",
+        platform: "instagram",
+        muapiAccountId: "9",
+        platformName: "Instagram",
+        accountName: "IG",
       }),
     publishClient: fakePublishClient({
       submitPublish: async () => {
@@ -548,7 +703,7 @@ test("publishAssetKit rejects a non-YouTube account (this slice) without submitt
       mediaUrl: "https://cdn.example.com/v.mp4",
       title: "Launch",
     }),
-    /Only YouTube publishing is supported/,
+    /Instagram publishing isn't available yet/,
   );
   assert.equal(submitted, false);
 });

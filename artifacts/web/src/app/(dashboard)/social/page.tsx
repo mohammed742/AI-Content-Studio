@@ -46,11 +46,16 @@ export default async function SocialPage() {
     nickname: account.nickname,
   }));
 
-  // Publish-to-YouTube inputs: connected YouTube channels, ready video kits, and
+  // Publish inputs: connected YouTube + TikTok accounts, ready video kits, and
   // the user's publish jobs (listPublishJobs advances any in-flight job on read).
-  const youtubeAccounts = allAccounts
-    .filter((a) => a.platform === "youtube")
-    .map((a) => ({ id: a.id, label: a.nickname?.trim() || a.accountName }));
+  // Instagram publishing lands in DEV-38, so it's excluded here for now.
+  const publishAccounts = allAccounts
+    .filter((a) => a.platform === "youtube" || a.platform === "tiktok")
+    .map((a) => ({
+      id: a.id,
+      label: a.nickname?.trim() || a.accountName,
+      platform: a.platform as "youtube" | "tiktok",
+    }));
 
   const videoKits = (
     await db
@@ -76,7 +81,7 @@ export default async function SocialPage() {
     <div className="mx-auto w-full max-w-4xl space-y-10">
       <SocialConnections accounts={accounts} />
       <SocialPublish
-        youtubeAccounts={youtubeAccounts}
+        accounts={publishAccounts}
         videoKits={videoKits}
         initialJobs={jobs}
       />

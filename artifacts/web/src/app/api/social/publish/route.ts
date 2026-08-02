@@ -20,17 +20,30 @@ import { z } from "zod";
 import { db } from "@/db";
 import { assetKits } from "@/db/schema";
 import { ensureLocalUser } from "@/lib/local-user";
-import { socialPublishingService } from "@/lib/social-publishing";
+import {
+  socialPublishingService,
+  TIKTOK_PRIVACY_LEVELS,
+} from "@/lib/social-publishing";
 
 export const runtime = "nodejs";
 
+// Superset of both platforms' fields. `title` is optional here (TikTok's caption
+// is optional; the YouTube builder still fails loud if it's missing). The
+// authoritative, platform-specific validation lives in the service builders.
 const publishSchema = z.object({
   assetKitId: z.string().min(1),
   socialAccountId: z.string().min(1),
-  title: z.string().trim().min(1).max(100),
+  title: z.string().trim().max(150).optional(),
+  // YouTube
   description: z.string().max(5000).optional(),
   tags: z.array(z.string()).max(50).optional(),
   privacy: z.enum(["public", "private", "unlisted"]).optional(),
+  // TikTok
+  privacyLevel: z.enum(TIKTOK_PRIVACY_LEVELS).optional(),
+  allowComment: z.boolean().optional(),
+  allowDuet: z.boolean().optional(),
+  allowStitch: z.boolean().optional(),
+  isAiGenerated: z.boolean().optional(),
 });
 
 const retrySchema = z.object({ retryJobId: z.string().min(1) });
@@ -39,7 +52,7 @@ const retrySchema = z.object({ retryJobId: z.string().min(1) });
 function statusForError(message: string): number | null {
   if (/not found/i.test(message)) return 404;
   if (
-    /Only YouTube publishing|Only failed publishes|account_id|media_url|title|privacy|characters or fewer/i.test(
+    /Instagram publishing|Only failed publishes|account_id|media_url|title|caption|privacy|privacy_level|isn't available|characters or fewer/i.test(
       message,
     )
   ) {
@@ -94,7 +107,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // Resolve the owned kit → its R2 media URL. YouTube is video-only.
+  // Resolve the owned kit → its R2 media URL. YouTube + TikTok are video-only.
   const [kit] = await db
     .select()
     .from(assetKits)
@@ -108,7 +121,7 @@ export async function POST(req: Request) {
   }
   if (kit.mediaType !== "video") {
     return NextResponse.json(
-      { data: null, error: "YouTube publishing requires a video Asset Kit." },
+      { data: null, error: "Publishing requires a video Asset Kit." },
       { status: 400 },
     );
   }
@@ -123,6 +136,11 @@ export async function POST(req: Request) {
       description: parsed.data.description,
       tags: parsed.data.tags,
       privacy: parsed.data.privacy,
+      privacyLevel: parsed.data.privacyLevel,
+      allowComment: parsed.data.allowComment,
+      allowDuet: parsed.data.allowDuet,
+      allowStitch: parsed.data.allowStitch,
+      isAiGenerated: parsed.data.isAiGenerated,
     });
     return NextResponse.json({ data: job, error: null });
   } catch (err) {

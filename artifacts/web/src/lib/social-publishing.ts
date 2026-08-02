@@ -25,6 +25,8 @@ import type {
   PublishJobParams,
   SocialAccount,
   SocialPlatform,
+  TikTokPublishParams,
+  YouTubePublishParams,
 } from "@/db/schema";
 
 /** Muapi's social publishing base — same host as the generation API. */
@@ -170,6 +172,26 @@ export function resolvePrivacy(value?: string): PublishPrivacy {
   throw new Error(`Unsupported privacy: ${value}`);
 }
 
+/** Coerce our text `muapiAccountId` to the integer `account_id` Muapi requires. */
+function resolveAccountId(muapiAccountId: string): number {
+  const accountId = Number(muapiAccountId);
+  if (!Number.isInteger(accountId)) {
+    throw new Error(
+      `account_id must be an integer (got ${JSON.stringify(muapiAccountId)})`,
+    );
+  }
+  return accountId;
+}
+
+/** Trim + require an http(s) media URL (the video to publish), or throw. */
+function resolveMediaUrl(mediaUrl: string): string {
+  const url = mediaUrl?.trim();
+  if (!url || !/^https?:\/\//i.test(url)) {
+    throw new Error("media_url must be an http(s) URL");
+  }
+  return url;
+}
+
 export interface BuildYouTubePublishParamsInput {
   /** Muapi account id (text in our DB, integer in Muapi's schema). */
   muapiAccountId: string;
@@ -188,17 +210,7 @@ export interface BuildYouTubePublishParamsInput {
  */
 export function buildYouTubePublishParams(
   input: BuildYouTubePublishParamsInput,
-): PublishJobParams {
-  const accountId = Number(input.muapiAccountId);
-  if (!Number.isInteger(accountId)) {
-    throw new Error(
-      `account_id must be an integer (got ${JSON.stringify(input.muapiAccountId)})`,
-    );
-  }
-  const mediaUrl = input.mediaUrl?.trim();
-  if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) {
-    throw new Error("media_url must be an http(s) URL");
-  }
+): YouTubePublishParams {
   const title = input.title?.trim();
   if (!title) {
     throw new Error("title is required");
@@ -208,9 +220,9 @@ export function buildYouTubePublishParams(
       `title must be ${MAX_PUBLISH_TITLE_LENGTH} characters or fewer`,
     );
   }
-  const params: PublishJobParams = {
-    account_id: accountId,
-    media_url: mediaUrl,
+  const params: YouTubePublishParams = {
+    account_id: resolveAccountId(input.muapiAccountId),
+    media_url: resolveMediaUrl(input.mediaUrl),
     title,
     privacy: resolvePrivacy(input.privacy),
   };
@@ -230,6 +242,119 @@ export function buildYouTubePublishParams(
     }
   }
   return params;
+}
+
+// --- DEV-37: TikTok publish -----------------------------------------------
+
+/**
+ * TikTok's `privacy_level` enum (the live `tiktok-publish` schema, verified
+ * DEV-37) — nothing like YouTube's public/unlisted/private.
+ *
+ * ⚠️ QA note: an app in TikTok's unaudited/sandbox state may only permit
+ * `SELF_ONLY` until content-posting is approved — a live-publish concern, not a
+ * validation one.
+ */
+export const TIKTOK_PRIVACY_LEVELS = [
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+  "FOLLOWER_OF_CREATOR",
+  "SELF_ONLY",
+] as const;
+export type TikTokPrivacyLevel = (typeof TIKTOK_PRIVACY_LEVELS)[number];
+
+/** TikTok caption cap (the schema documents `title` as "max 150 chars"). */
+export const MAX_TIKTOK_CAPTION_LENGTH = 150;
+
+/** Narrow/normalize a TikTok privacy level, defaulting to public, or throw. */
+export function resolvePrivacyLevel(value?: string): TikTokPrivacyLevel {
+  const v = (value ?? "").trim() || "PUBLIC_TO_EVERYONE";
+  if ((TIKTOK_PRIVACY_LEVELS as readonly string[]).includes(v)) {
+    return v as TikTokPrivacyLevel;
+  }
+  throw new Error(`Unsupported privacy_level: ${value}`);
+}
+
+export interface BuildTikTokPublishParamsInput {
+  muapiAccountId: string;
+  mediaUrl: string;
+  /** The caption (TikTok's `title`); optional, ≤150 chars. */
+  title?: string;
+  privacyLevel?: string;
+  allowComment?: boolean;
+  allowDuet?: boolean;
+  allowStitch?: boolean;
+  isAiGenerated?: boolean;
+}
+
+/**
+ * Build + validate the `tiktok-publish` request body. Fail-loud on account id,
+ * media URL, caption length, and privacy level before spending the $0.02.
+ *
+ * Interaction toggles default open (allow_comment/duet/stitch = true), matching
+ * TikTok's own defaults. `is_ai_generated` defaults **true** — every Asset Kit
+ * this app publishes is AI-generated, and TikTok requires that disclosure.
+ */
+export function buildTikTokPublishParams(
+  input: BuildTikTokPublishParamsInput,
+): TikTokPublishParams {
+  const params: TikTokPublishParams = {
+    account_id: resolveAccountId(input.muapiAccountId),
+    media_url: resolveMediaUrl(input.mediaUrl),
+    privacy_level: resolvePrivacyLevel(input.privacyLevel),
+    allow_comment: input.allowComment ?? true,
+    allow_duet: input.allowDuet ?? true,
+    allow_stitch: input.allowStitch ?? true,
+    is_ai_generated: input.isAiGenerated ?? true,
+  };
+  const caption = input.title?.trim();
+  if (caption) {
+    if (caption.length > MAX_TIKTOK_CAPTION_LENGTH) {
+      throw new Error(
+        `caption must be ${MAX_TIKTOK_CAPTION_LENGTH} characters or fewer`,
+      );
+    }
+    params.title = caption;
+  }
+  return params;
+}
+
+/**
+ * Dispatch to the platform-specific params builder and derive the denormalized
+ * job title (the history label). Instagram publishing lands in DEV-38, so it
+ * fails loud here rather than silently building an unsupported body.
+ */
+function buildPublishParams(
+  account: SocialAccount,
+  request: PublishAssetKitRequest,
+): { params: PublishJobParams; jobTitle: string } {
+  if (account.platform === "youtube") {
+    const params = buildYouTubePublishParams({
+      muapiAccountId: account.muapiAccountId,
+      mediaUrl: request.mediaUrl,
+      title: request.title ?? "",
+      description: request.description,
+      tags: request.tags,
+      privacy: request.privacy,
+    });
+    return { params, jobTitle: params.title };
+  }
+  if (account.platform === "tiktok") {
+    const params = buildTikTokPublishParams({
+      muapiAccountId: account.muapiAccountId,
+      mediaUrl: request.mediaUrl,
+      title: request.title,
+      privacyLevel: request.privacyLevel,
+      allowComment: request.allowComment,
+      allowDuet: request.allowDuet,
+      allowStitch: request.allowStitch,
+      isAiGenerated: request.isAiGenerated,
+    });
+    // Caption is optional — fall back to a stable label so history is readable.
+    const jobTitle =
+      params.title || request.title?.trim() || "Untitled TikTok video";
+    return { params, jobTitle };
+  }
+  throw new Error("Instagram publishing isn't available yet");
 }
 
 // --- injectable seams -----------------------------------------------------
@@ -346,10 +471,18 @@ export interface PublishAssetKitRequest {
   assetKitId: string;
   /** The kit's R2 media URL (the route resolves this from the owned kit). */
   mediaUrl: string;
-  title: string;
+  /** Title (YouTube) / caption (TikTok). Required for YouTube; optional for TikTok. */
+  title?: string;
+  // YouTube-only fields.
   description?: string;
   tags?: string[];
   privacy?: string;
+  // TikTok-only fields.
+  privacyLevel?: string;
+  allowComment?: boolean;
+  allowDuet?: boolean;
+  allowStitch?: boolean;
+  isAiGenerated?: boolean;
 }
 
 export interface GetConnectUrlRequest {
@@ -486,24 +619,14 @@ export class SocialPublishingService {
    * record a `processing` job carrying the async request id + a params snapshot
    * (for Retry + history). Does NOT poll — the job advances on read.
    *
-   * YouTube-only this slice (DEV-36); TikTok/Instagram are DEV-37/38.
+   * YouTube (DEV-36) + TikTok (DEV-37); Instagram is DEV-38.
    */
   async publishAssetKit(request: PublishAssetKitRequest): Promise<PublishJob> {
     const account = await this.getOwned(request.userId, request.socialAccountId);
     if (!account) {
       throw new Error("Account not found");
     }
-    if (account.platform !== "youtube") {
-      throw new Error("Only YouTube publishing is supported");
-    }
-    const params = buildYouTubePublishParams({
-      muapiAccountId: account.muapiAccountId,
-      mediaUrl: request.mediaUrl,
-      title: request.title,
-      description: request.description,
-      tags: request.tags,
-      privacy: request.privacy,
-    });
+    const { params, jobTitle } = buildPublishParams(account, request);
     const submit = await this.publishClient.submitPublish(account.platform, params);
     return this.insertJob({
       userId: request.userId,
@@ -512,7 +635,7 @@ export class SocialPublishingService {
       platform: account.platform,
       muapiRequestId: submit.requestId,
       status: "processing",
-      title: params.title,
+      title: jobTitle,
       mediaUrl: params.media_url,
       params,
       cost: submit.cost,

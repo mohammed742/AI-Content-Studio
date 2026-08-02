@@ -606,10 +606,14 @@ export type PublishJobStatus = (typeof PUBLISH_JOB_STATUSES)[number];
 /**
  * The exact body sent to Muapi's `{platform}-publish` endpoint, snapshotted on
  * the job so Retry (AC #3) resubmits identical parameters and history shows
- * precisely what was published. Shape matches the live `youtube-publish` schema
- * (verified DEV-36); `account_id` is an integer per that schema.
+ * precisely what was published. `account_id` is an integer on every platform.
+ *
+ * One variant per platform because the field sets differ materially (verified
+ * live against each `{platform}-publish` model schema): YouTube takes a required
+ * title + description/tags/privacy; TikTok takes an optional caption +
+ * privacy_level + interaction toggles.
  */
-export interface PublishJobParams {
+export interface YouTubePublishParams {
   account_id: number;
   media_url: string;
   title: string;
@@ -619,6 +623,21 @@ export interface PublishJobParams {
   category_id?: string;
   made_for_kids?: boolean;
 }
+
+/** TikTok's `tiktok-publish` body (verified DEV-37): title is the caption (≤150). */
+export interface TikTokPublishParams {
+  account_id: number;
+  media_url: string;
+  title?: string;
+  privacy_level?: string;
+  allow_comment?: boolean;
+  allow_duet?: boolean;
+  allow_stitch?: boolean;
+  is_ai_generated?: boolean;
+}
+
+/** The publish body snapshot — a per-platform union (see each variant above). */
+export type PublishJobParams = YouTubePublishParams | TikTokPublishParams;
 
 export const publishJobs = pgTable(
   "publish_jobs",
