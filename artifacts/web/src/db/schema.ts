@@ -636,8 +636,24 @@ export interface TikTokPublishParams {
   is_ai_generated?: boolean;
 }
 
+/**
+ * Instagram's `instagram-publish` body (verified DEV-38): caption optional
+ * (≤2200); placement is reels/stories/timeline; share_to_feed mirrors a Reel to
+ * the main feed. Requires a Business/Creator account (enforced at connect time).
+ */
+export interface InstagramPublishParams {
+  account_id: number;
+  media_url: string;
+  caption?: string;
+  placement?: string;
+  share_to_feed?: boolean;
+}
+
 /** The publish body snapshot — a per-platform union (see each variant above). */
-export type PublishJobParams = YouTubePublishParams | TikTokPublishParams;
+export type PublishJobParams =
+  | YouTubePublishParams
+  | TikTokPublishParams
+  | InstagramPublishParams;
 
 export const publishJobs = pgTable(
   "publish_jobs",

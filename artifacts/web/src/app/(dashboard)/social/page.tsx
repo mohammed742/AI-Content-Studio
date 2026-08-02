@@ -46,16 +46,14 @@ export default async function SocialPage() {
     nickname: account.nickname,
   }));
 
-  // Publish inputs: connected YouTube + TikTok accounts, ready video kits, and
-  // the user's publish jobs (listPublishJobs advances any in-flight job on read).
-  // Instagram publishing lands in DEV-38, so it's excluded here for now.
-  const publishAccounts = allAccounts
-    .filter((a) => a.platform === "youtube" || a.platform === "tiktok")
-    .map((a) => ({
-      id: a.id,
-      label: a.nickname?.trim() || a.accountName,
-      platform: a.platform as "youtube" | "tiktok",
-    }));
+  // Publish inputs: every connected account (YouTube + TikTok + Instagram),
+  // ready video kits, and the user's publish jobs (listPublishJobs advances any
+  // in-flight job on read). All three platforms are publishable as of DEV-38.
+  const publishAccounts = allAccounts.map((a) => ({
+    id: a.id,
+    label: a.nickname?.trim() || a.accountName,
+    platform: a.platform,
+  }));
 
   const videoKits = (
     await db

@@ -21,6 +21,7 @@
 import type {
   InsertPublishJob,
   InsertSocialAccount,
+  InstagramPublishParams,
   PublishJob,
   PublishJobParams,
   SocialAccount,
@@ -318,10 +319,70 @@ export function buildTikTokPublishParams(
   return params;
 }
 
+// --- DEV-38: Instagram publish --------------------------------------------
+
+/**
+ * Instagram's `placement` enum (the live `instagram-publish` schema, verified
+ * DEV-38): where the media lands. `reels` is the video-native, highest-reach
+ * placement — the default, since every Asset Kit we publish is a video.
+ */
+export const INSTAGRAM_PLACEMENTS = ["reels", "stories", "timeline"] as const;
+export type InstagramPlacement = (typeof INSTAGRAM_PLACEMENTS)[number];
+
+/** Instagram caption cap — IG's documented 2200-char limit (schema states none). */
+export const MAX_INSTAGRAM_CAPTION_LENGTH = 2200;
+
+/** Narrow/normalize an Instagram placement, defaulting to `reels`, or throw. */
+export function resolvePlacement(value?: string): InstagramPlacement {
+  const v = (value ?? "").trim() || "reels";
+  if ((INSTAGRAM_PLACEMENTS as readonly string[]).includes(v)) {
+    return v as InstagramPlacement;
+  }
+  throw new Error(`Unsupported placement: ${value}`);
+}
+
+export interface BuildInstagramPublishParamsInput {
+  muapiAccountId: string;
+  mediaUrl: string;
+  /** The caption (Instagram's `caption`); optional, ≤2200 chars. */
+  caption?: string;
+  placement?: string;
+  shareToFeed?: boolean;
+}
+
+/**
+ * Build + validate the `instagram-publish` request body. Fail-loud on account
+ * id, media URL, caption length, and placement before spending the $0.02.
+ *
+ * `share_to_feed` defaults **true** (mirror a Reel to the main feed → maximum
+ * reach). The caption is optional; a blank one is omitted so history falls back
+ * to a stable label (see {@link buildPublishParams}).
+ */
+export function buildInstagramPublishParams(
+  input: BuildInstagramPublishParamsInput,
+): InstagramPublishParams {
+  const params: InstagramPublishParams = {
+    account_id: resolveAccountId(input.muapiAccountId),
+    media_url: resolveMediaUrl(input.mediaUrl),
+    placement: resolvePlacement(input.placement),
+    share_to_feed: input.shareToFeed ?? true,
+  };
+  const caption = input.caption?.trim();
+  if (caption) {
+    if (caption.length > MAX_INSTAGRAM_CAPTION_LENGTH) {
+      throw new Error(
+        `caption must be ${MAX_INSTAGRAM_CAPTION_LENGTH} characters or fewer`,
+      );
+    }
+    params.caption = caption;
+  }
+  return params;
+}
+
 /**
  * Dispatch to the platform-specific params builder and derive the denormalized
- * job title (the history label). Instagram publishing lands in DEV-38, so it
- * fails loud here rather than silently building an unsupported body.
+ * job title (the history label). Every `SocialPlatform` is handled — YouTube
+ * (DEV-36), TikTok (DEV-37), Instagram (DEV-38).
  */
 function buildPublishParams(
   account: SocialAccount,
@@ -354,7 +415,20 @@ function buildPublishParams(
       params.title || request.title?.trim() || "Untitled TikTok video";
     return { params, jobTitle };
   }
-  throw new Error("Instagram publishing isn't available yet");
+  if (account.platform === "instagram") {
+    const params = buildInstagramPublishParams({
+      muapiAccountId: account.muapiAccountId,
+      mediaUrl: request.mediaUrl,
+      caption: request.title,
+      placement: request.placement,
+      shareToFeed: request.shareToFeed,
+    });
+    // Caption is optional — fall back to a stable label so history is readable.
+    const jobTitle =
+      params.caption || request.title?.trim() || "Untitled Instagram video";
+    return { params, jobTitle };
+  }
+  throw new Error(`Unsupported platform: ${account.platform}`);
 }
 
 // --- injectable seams -----------------------------------------------------
@@ -483,6 +557,9 @@ export interface PublishAssetKitRequest {
   allowDuet?: boolean;
   allowStitch?: boolean;
   isAiGenerated?: boolean;
+  // Instagram-only fields (caption reuses the shared `title`).
+  placement?: string;
+  shareToFeed?: boolean;
 }
 
 export interface GetConnectUrlRequest {
@@ -619,7 +696,7 @@ export class SocialPublishingService {
    * record a `processing` job carrying the async request id + a params snapshot
    * (for Retry + history). Does NOT poll — the job advances on read.
    *
-   * YouTube (DEV-36) + TikTok (DEV-37); Instagram is DEV-38.
+   * Handles every platform: YouTube (DEV-36), TikTok (DEV-37), Instagram (DEV-38).
    */
   async publishAssetKit(request: PublishAssetKitRequest): Promise<PublishJob> {
     const account = await this.getOwned(request.userId, request.socialAccountId);

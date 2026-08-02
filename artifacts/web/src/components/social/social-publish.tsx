@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import {
   Youtube,
   Music2,
+  Instagram,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -39,7 +40,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-export type PublishPlatform = "youtube" | "tiktok";
+export type PublishPlatform = "youtube" | "tiktok" | "instagram";
 
 export interface PublishAccountOption {
   id: string;
@@ -73,12 +74,19 @@ const TIKTOK_PRIVACY_LEVELS = [
   { value: "SELF_ONLY", label: "Only me" },
 ] as const;
 
+const INSTAGRAM_PLACEMENTS = [
+  { value: "reels", label: "Reels" },
+  { value: "stories", label: "Stories" },
+  { value: "timeline", label: "Timeline" },
+] as const;
+
 const PLATFORM_META: Record<
   PublishPlatform,
   { label: string; titleLabel: string; titleMax: number }
 > = {
   youtube: { label: "YouTube", titleLabel: "Title", titleMax: 100 },
   tiktok: { label: "TikTok", titleLabel: "Caption", titleMax: 150 },
+  instagram: { label: "Instagram", titleLabel: "Caption", titleMax: 2200 },
 };
 
 const SELECT_CLASS =
@@ -127,6 +135,9 @@ export function SocialPublish({
   const [allowDuet, setAllowDuet] = useState(true);
   const [allowStitch, setAllowStitch] = useState(true);
   const [isAiGenerated, setIsAiGenerated] = useState(true);
+  // Instagram fields.
+  const [placement, setPlacement] = useState<string>("reels");
+  const [shareToFeed, setShareToFeed] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [jobs, setJobs] = useState<PublishJobView[]>(initialJobs);
@@ -178,11 +189,11 @@ export function SocialPublish({
     }
     setSubmitting(true);
     try {
+      const base = { assetKitId: kitId, socialAccountId: accountId };
       const body =
         platform === "youtube"
           ? {
-              assetKitId: kitId,
-              socialAccountId: accountId,
+              ...base,
               title: title.trim(),
               description: description.trim() || undefined,
               tags: tags
@@ -191,16 +202,22 @@ export function SocialPublish({
                 .filter(Boolean),
               privacy,
             }
-          : {
-              assetKitId: kitId,
-              socialAccountId: accountId,
-              title: title.trim() || undefined,
-              privacyLevel,
-              allowComment,
-              allowDuet,
-              allowStitch,
-              isAiGenerated,
-            };
+          : platform === "tiktok"
+            ? {
+                ...base,
+                title: title.trim() || undefined,
+                privacyLevel,
+                allowComment,
+                allowDuet,
+                allowStitch,
+                isAiGenerated,
+              }
+            : {
+                ...base,
+                title: title.trim() || undefined,
+                placement,
+                shareToFeed,
+              };
       const res = await fetch("/api/social/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -272,7 +289,7 @@ export function SocialPublish({
           {!canPublish && (
             <CardDescription className="text-xs">
               {accounts.length === 0
-                ? "Connect a YouTube or TikTok account above to start publishing."
+                ? "Connect a YouTube, TikTok, or Instagram account above to start publishing."
                 : "Generate a video (UGC Video) first — publishing needs a video Asset Kit."}
             </CardDescription>
           )}
@@ -335,7 +352,7 @@ export function SocialPublish({
             />
           </div>
 
-          {platform === "youtube" ? (
+          {platform === "youtube" && (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="publish-description">Description</Label>
@@ -383,7 +400,9 @@ export function SocialPublish({
                 </div>
               </div>
             </>
-          ) : (
+          )}
+
+          {platform === "tiktok" && (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="publish-privacy-level">Who can view</Label>
@@ -434,6 +453,36 @@ export function SocialPublish({
             </>
           )}
 
+          {platform === "instagram" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="publish-placement">Placement</Label>
+                <select
+                  id="publish-placement"
+                  className={SELECT_CLASS}
+                  value={placement}
+                  disabled={!canPublish || submitting}
+                  onChange={(e) => setPlacement(e.target.value)}
+                >
+                  {INSTAGRAM_PLACEMENTS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <CheckboxField
+                  id="publish-share-to-feed"
+                  label="Also share to main feed"
+                  checked={shareToFeed}
+                  disabled={!canPublish || submitting || placement !== "reels"}
+                  onChange={setShareToFeed}
+                />
+              </div>
+            </div>
+          )}
+
           <Button
             className="w-full"
             disabled={!canPublish || submitting}
@@ -473,6 +522,9 @@ export function SocialPublish({
 function PlatformIcon({ platform }: { platform: PublishPlatform }) {
   if (platform === "tiktok") {
     return <Music2 className="h-6 w-6 text-foreground" strokeWidth={1.5} />;
+  }
+  if (platform === "instagram") {
+    return <Instagram className="h-6 w-6 text-pink-500" strokeWidth={1.5} />;
   }
   return <Youtube className="h-6 w-6 text-red-500" strokeWidth={1.5} />;
 }

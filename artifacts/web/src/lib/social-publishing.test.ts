@@ -23,6 +23,9 @@ import {
   resolvePrivacyLevel,
   buildTikTokPublishParams,
   MAX_TIKTOK_CAPTION_LENGTH,
+  resolvePlacement,
+  buildInstagramPublishParams,
+  MAX_INSTAGRAM_CAPTION_LENGTH,
   type SocialMuapiClient,
   type MuapiSocialAccount,
   type SocialAccountUpserter,
@@ -544,6 +547,70 @@ test("buildTikTokPublishParams fails loud on a non-integer account, bad url, and
   );
 });
 
+test("resolvePlacement defaults to reels, accepts the enum, rejects the rest", () => {
+  assert.equal(resolvePlacement(), "reels");
+  assert.equal(resolvePlacement(""), "reels");
+  assert.equal(resolvePlacement(" stories "), "stories");
+  assert.equal(resolvePlacement("timeline"), "timeline");
+  assert.throws(() => resolvePlacement("feed"), /Unsupported placement/);
+});
+
+test("buildInstagramPublishParams maps the caption + defaults placement reels and share_to_feed true", () => {
+  assert.deepEqual(
+    buildInstagramPublishParams({
+      muapiAccountId: "42",
+      mediaUrl: " https://cdn.example.com/v.mp4 ",
+      caption: "  New reel #ai  ",
+    }),
+    {
+      account_id: 42,
+      media_url: "https://cdn.example.com/v.mp4",
+      placement: "reels",
+      share_to_feed: true,
+      caption: "New reel #ai",
+    },
+  );
+});
+
+test("buildInstagramPublishParams omits a blank caption and honors explicit placement + share_to_feed", () => {
+  assert.deepEqual(
+    buildInstagramPublishParams({
+      muapiAccountId: "7",
+      mediaUrl: "https://cdn.example.com/v.mp4",
+      caption: "   ",
+      placement: "stories",
+      shareToFeed: false,
+    }),
+    {
+      account_id: 7,
+      media_url: "https://cdn.example.com/v.mp4",
+      placement: "stories",
+      share_to_feed: false,
+    },
+  );
+});
+
+test("buildInstagramPublishParams fails loud on a non-integer account, bad url, and overlong caption", () => {
+  assert.throws(
+    () =>
+      buildInstagramPublishParams({ muapiAccountId: "nope", mediaUrl: "https://x/v.mp4" }),
+    /account_id must be an integer/,
+  );
+  assert.throws(
+    () => buildInstagramPublishParams({ muapiAccountId: "1", mediaUrl: "ftp://x/v.mp4" }),
+    /media_url must be an http/,
+  );
+  assert.throws(
+    () =>
+      buildInstagramPublishParams({
+        muapiAccountId: "1",
+        mediaUrl: "https://x/v.mp4",
+        caption: "x".repeat(MAX_INSTAGRAM_CAPTION_LENGTH + 1),
+      }),
+    /caption must be .* or fewer/,
+  );
+});
+
 function fakePublishClient(
   overrides: Partial<PublishMuapiClient> = {},
 ): PublishMuapiClient {
@@ -674,11 +741,12 @@ test("publishAssetKit falls back to a stable label when the TikTok caption is bl
     mediaUrl: "https://cdn.example.com/v.mp4",
   });
   assert.equal(inserted?.title, "Untitled TikTok video");
-  assert.equal(inserted?.params.title, undefined);
+  assert.equal((inserted?.params as { title?: string }).title, undefined);
 });
 
-test("publishAssetKit rejects an Instagram account (not available yet) without submitting", async () => {
-  let submitted = false;
+test("publishAssetKit publishes an Instagram account with instagram params + caption title", async () => {
+  const submits: Array<{ platform: string; params: unknown }> = [];
+  let inserted: InsertPublishJob | undefined;
   const service = new SocialPublishingService({
     getOwned: async () =>
       fakeRow({
@@ -686,26 +754,72 @@ test("publishAssetKit rejects an Instagram account (not available yet) without s
         platform: "instagram",
         muapiAccountId: "9",
         platformName: "Instagram",
-        accountName: "IG",
+        accountName: "Acme IG",
       }),
     publishClient: fakePublishClient({
-      submitPublish: async () => {
-        submitted = true;
-        return { requestId: "x", cost: 0 };
+      submitPublish: async (platform, params) => {
+        submits.push({ platform, params });
+        return { requestId: "req_ig", cost: 0.02 };
       },
     }),
+    insertJob: async (values) => {
+      inserted = values;
+      return fakeJob(values);
+    },
   });
-  await assert.rejects(
-    service.publishAssetKit({
-      userId: "user_1",
-      socialAccountId: "acc_1",
-      assetKitId: "kit_1",
-      mediaUrl: "https://cdn.example.com/v.mp4",
-      title: "Launch",
+  const job = await service.publishAssetKit({
+    userId: "user_1",
+    socialAccountId: "acc_1",
+    assetKitId: "kit_1",
+    mediaUrl: "https://cdn.example.com/v.mp4",
+    title: "New reel #ai",
+    placement: "stories",
+    shareToFeed: false,
+  });
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].platform, "instagram");
+  assert.deepEqual(submits[0].params, {
+    account_id: 9,
+    media_url: "https://cdn.example.com/v.mp4",
+    placement: "stories",
+    share_to_feed: false,
+    caption: "New reel #ai",
+  });
+  assert.equal(inserted?.platform, "instagram");
+  assert.equal(inserted?.title, "New reel #ai");
+  assert.equal(inserted?.cost, 0.02);
+  assert.equal(job.status, "processing");
+});
+
+test("publishAssetKit falls back to a stable label when the Instagram caption is blank", async () => {
+  let inserted: InsertPublishJob | undefined;
+  const service = new SocialPublishingService({
+    getOwned: async () =>
+      fakeRow({
+        userId: "user_1",
+        platform: "instagram",
+        muapiAccountId: "9",
+        platformName: "Instagram",
+        accountName: "Acme IG",
+      }),
+    publishClient: fakePublishClient({
+      submitPublish: async () => ({ requestId: "req_ig", cost: 0.02 }),
     }),
-    /Instagram publishing isn't available yet/,
-  );
-  assert.equal(submitted, false);
+    insertJob: async (values) => {
+      inserted = values;
+      return fakeJob(values);
+    },
+  });
+  await service.publishAssetKit({
+    userId: "user_1",
+    socialAccountId: "acc_1",
+    assetKitId: "kit_1",
+    mediaUrl: "https://cdn.example.com/v.mp4",
+  });
+  assert.equal(inserted?.title, "Untitled Instagram video");
+  const params = inserted?.params as { caption?: string; placement?: string };
+  assert.equal(params.caption, undefined);
+  assert.equal(params.placement, "reels");
 });
 
 test("publishAssetKit rejects an unowned account and never submits", async () => {

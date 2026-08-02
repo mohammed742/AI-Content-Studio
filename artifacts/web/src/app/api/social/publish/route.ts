@@ -23,17 +23,20 @@ import { ensureLocalUser } from "@/lib/local-user";
 import {
   socialPublishingService,
   TIKTOK_PRIVACY_LEVELS,
+  INSTAGRAM_PLACEMENTS,
 } from "@/lib/social-publishing";
 
 export const runtime = "nodejs";
 
-// Superset of both platforms' fields. `title` is optional here (TikTok's caption
-// is optional; the YouTube builder still fails loud if it's missing). The
-// authoritative, platform-specific validation lives in the service builders.
+// Superset of every platform's fields. `title` is optional here (TikTok +
+// Instagram captions are optional; the YouTube builder still fails loud if it's
+// missing) and capped at Instagram's 2200 — the per-platform service builders
+// enforce the real caps (YouTube 100 / TikTok 150 / Instagram 2200). The
+// authoritative, platform-specific validation lives in those builders.
 const publishSchema = z.object({
   assetKitId: z.string().min(1),
   socialAccountId: z.string().min(1),
-  title: z.string().trim().max(150).optional(),
+  title: z.string().trim().max(2200).optional(),
   // YouTube
   description: z.string().max(5000).optional(),
   tags: z.array(z.string()).max(50).optional(),
@@ -44,6 +47,9 @@ const publishSchema = z.object({
   allowDuet: z.boolean().optional(),
   allowStitch: z.boolean().optional(),
   isAiGenerated: z.boolean().optional(),
+  // Instagram
+  placement: z.enum(INSTAGRAM_PLACEMENTS).optional(),
+  shareToFeed: z.boolean().optional(),
 });
 
 const retrySchema = z.object({ retryJobId: z.string().min(1) });
@@ -52,7 +58,7 @@ const retrySchema = z.object({ retryJobId: z.string().min(1) });
 function statusForError(message: string): number | null {
   if (/not found/i.test(message)) return 404;
   if (
-    /Instagram publishing|Only failed publishes|account_id|media_url|title|caption|privacy|privacy_level|isn't available|characters or fewer/i.test(
+    /Only failed publishes|account_id|media_url|title|caption|privacy|privacy_level|placement|Unsupported platform|characters or fewer/i.test(
       message,
     )
   ) {
@@ -141,6 +147,8 @@ export async function POST(req: Request) {
       allowDuet: parsed.data.allowDuet,
       allowStitch: parsed.data.allowStitch,
       isAiGenerated: parsed.data.isAiGenerated,
+      placement: parsed.data.placement,
+      shareToFeed: parsed.data.shareToFeed,
     });
     return NextResponse.json({ data: job, error: null });
   } catch (err) {
