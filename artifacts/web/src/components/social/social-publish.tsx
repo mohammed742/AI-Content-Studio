@@ -12,22 +12,13 @@
  * in flight and surface the live post link on completion, or an error + Retry on
  * failure.
  *
- * Publishing history gets its full table in DEV-39 — this is the minimal
- * in-context status list the publish flow needs to satisfy the slice's ACs.
+ * This component owns the shared `jobs` state + the 5s poll; the full
+ * Publishing History table (DEV-39) renders below the form via <PublishHistory>,
+ * driven off that same state so a fresh publish appears in history instantly.
  */
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  Youtube,
-  Music2,
-  Instagram,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
-  Send,
-  Clock,
-} from "lucide-react";
+import { Youtube, Music2, Instagram, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PublishHistory } from "./publish-history";
 
 export type PublishPlatform = "youtube" | "tiktok" | "instagram";
 
@@ -56,9 +48,11 @@ export interface PublishJobView {
   status: "pending" | "processing" | "completed" | "failed";
   title: string;
   platform: string;
+  mediaUrl: string | null;
   resultUrl: string | null;
   error: string | null;
   createdAt: string;
+  completedAt: string | null;
 }
 
 const PRIVACIES = [
@@ -98,18 +92,22 @@ function toView(raw: {
   status: PublishJobView["status"];
   title: string;
   platform: string;
+  mediaUrl: string | null;
   resultUrl: string | null;
   error: string | null;
   createdAt: string;
+  completedAt: string | null;
 }): PublishJobView {
   return {
     id: raw.id,
     status: raw.status,
     title: raw.title,
     platform: raw.platform,
+    mediaUrl: raw.mediaUrl,
     resultUrl: raw.resultUrl,
     error: raw.error,
     createdAt: raw.createdAt,
+    completedAt: raw.completedAt,
   };
 }
 
@@ -141,6 +139,7 @@ export function SocialPublish({
 
   const [submitting, setSubmitting] = useState(false);
   const [jobs, setJobs] = useState<PublishJobView[]>(initialJobs);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const account = useMemo(
     () => accounts.find((a) => a.id === accountId),
@@ -245,6 +244,7 @@ export function SocialPublish({
   }
 
   async function retry(jobId: string) {
+    setRetryingId(jobId);
     try {
       const res = await fetch("/api/social/publish", {
         method: "POST",
@@ -266,6 +266,8 @@ export function SocialPublish({
       setJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)));
     } catch {
       toast.error("Couldn't retry. Please try again.");
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -503,18 +505,7 @@ export function SocialPublish({
         </CardContent>
       </Card>
 
-      {jobs.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Recent publishes
-          </h3>
-          <ul className="space-y-2">
-            {jobs.map((job) => (
-              <PublishJobRow key={job.id} job={job} onRetry={() => retry(job.id)} />
-            ))}
-          </ul>
-        </div>
-      )}
+      <PublishHistory jobs={jobs} onRetry={retry} retryingId={retryingId} />
     </div>
   );
 }
@@ -560,67 +551,3 @@ function CheckboxField({
   );
 }
 
-function PublishJobRow({
-  job,
-  onRetry,
-}: {
-  job: PublishJobView;
-  onRetry: () => void;
-}) {
-  return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{job.title}</p>
-        <p className="text-xs capitalize text-muted-foreground">{job.platform}</p>
-        {job.status === "failed" && job.error && (
-          <p className="mt-0.5 truncate text-xs text-destructive">{job.error}</p>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <StatusBadge status={job.status} />
-        {job.status === "completed" && job.resultUrl && (
-          <a
-            href={job.resultUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            View <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
-        {job.status === "failed" && (
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function StatusBadge({ status }: { status: PublishJobView["status"] }) {
-  if (status === "completed") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-        <CheckCircle2 className="h-3.5 w-3.5" /> Published
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-        <XCircle className="h-3.5 w-3.5" /> Failed
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      {status === "processing" ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Clock className="h-3.5 w-3.5" />
-      )}
-      Processing
-    </span>
-  );
-}

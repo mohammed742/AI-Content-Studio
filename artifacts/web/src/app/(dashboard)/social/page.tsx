@@ -69,9 +69,11 @@ export default async function SocialPage() {
       status: job.status,
       title: job.title,
       platform: job.platform,
+      mediaUrl: job.mediaUrl,
       resultUrl: job.resultUrl,
       error: job.error,
       createdAt: job.createdAt.toISOString(),
+      completedAt: job.completedAt ? job.completedAt.toISOString() : null,
     }),
   );
 
