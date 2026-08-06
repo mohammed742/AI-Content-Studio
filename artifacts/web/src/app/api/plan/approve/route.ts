@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { businessProfiles, contentPlans } from "@/db/schema";
+import { calendarService } from "@/lib/calendar";
 import { generationQueueService } from "@/lib/generation-queue";
 import { ensureLocalUser } from "@/lib/local-user";
 
@@ -71,6 +72,22 @@ export async function POST(req: Request) {
       { data: null, error: "Plan not found or already generating" },
       { status: 404 },
     );
+  }
+
+  // DEV-40: auto-create Content Calendar entries from the approved plan's items
+  // (each item → one dated entry). Idempotent, so a retry re-approval adds none.
+  // Best-effort: a calendar write must not block generation — the calendar is
+  // secondary to the actual content, and the queue below is the real work.
+  try {
+    await calendarService.createCalendarEntriesForPlan({
+      id: plan.id,
+      userId: user.id,
+      weekStart: plan.weekStart,
+      items: plan.items,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
+    console.error("[api/plan/approve] calendar entry create failed:", message);
   }
 
   try {

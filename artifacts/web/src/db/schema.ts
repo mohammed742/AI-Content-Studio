@@ -698,3 +698,75 @@ export const publishJobs = pgTable(
 
 export type PublishJob = typeof publishJobs.$inferSelect;
 export type InsertPublishJob = typeof publishJobs.$inferInsert;
+
+// DEV-40: Calendar Entry (CONTEXT.md → "Calendar Entry") — one scheduled piece
+// of content on the Content Calendar. Auto-created from a Content Plan's items
+// when the plan is approved (each item → one entry, placed on its concrete date
+// = the plan's week_start Monday + the item's scheduledDay weekday offset).
+//
+// Refs use SET NULL like `publish_jobs`: deleting the source plan or Asset Kit
+// must not erase the calendar row (it lives on as a "standalone" entry). The
+// denormalized `platform`/`contentType`/`title`/`date` keep a row self-describing
+// after a set-null. `platform` is free text (not SOCIAL_PLATFORMS): plan items
+// use broader strings (e.g. "linkedin"); publishing (DEV-42) filters later.
+export const CALENDAR_ENTRY_STATUSES = [
+  "planned",
+  "generated",
+  "scheduled",
+  "published",
+  "failed",
+] as const;
+export type CalendarEntryStatus = (typeof CALENDAR_ENTRY_STATUSES)[number];
+
+export const calendarEntries = pgTable(
+  "calendar_entries",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // SET NULL (not cascade): a deleted plan / kit leaves the entry standing as
+    // a self-describing standalone row. Nullable is required for set-null.
+    contentPlanId: text("content_plan_id").references(() => contentPlans.id, {
+      onDelete: "set null",
+    }),
+    assetKitId: text("asset_kit_id").references(() => assetKits.id, {
+      onDelete: "set null",
+    }),
+    // The source ContentPlanItemRecord.id — the idempotency key for auto-create.
+    planItemId: text("plan_item_id"),
+    // Concrete scheduled date (week_start + weekday offset), and time-of-day as
+    // "HH:MM" (plan items carry no time; default 09:00, refined by drag-drop).
+    date: timestamp("date", { withTimezone: true }).notNull(),
+    time: text("time").notNull().default("09:00"),
+    // Denormalized from the plan item so the row survives a set-null.
+    platform: text("platform").notNull(),
+    contentType: text("content_type", { enum: CONTENT_TYPES }).notNull(),
+    title: text("title").notNull(),
+    status: text("status", { enum: CALENDAR_ENTRY_STATUSES })
+      .notNull()
+      .default("planned"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("calendar_entries_user_id_idx").on(table.userId),
+    // Idempotent auto-create: one entry per plan item, so re-approving a plan
+    // (retry) never duplicates. NULL content_plan_id rows (orphaned standalone)
+    // are treated as distinct by Postgres, which is the intended behavior.
+    uniqueIndex("calendar_entries_plan_item_idx").on(
+      table.contentPlanId,
+      table.planItemId,
+    ),
+  ],
+);
+
+export type CalendarEntry = typeof calendarEntries.$inferSelect;
+export type InsertCalendarEntry = typeof calendarEntries.$inferInsert;
