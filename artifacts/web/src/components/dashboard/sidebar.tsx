@@ -42,7 +42,7 @@ const navItems = [
   },
   {
     label: "Calendar",
-    href: "/dashboard/calendar",
+    href: "/calendar",
     icon: Calendar,
   },
   {

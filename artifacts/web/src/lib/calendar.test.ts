@@ -13,6 +13,7 @@ import {
   weekdayOffset,
   deriveCalendarEntries,
   CalendarService,
+  type CalendarServiceConfig,
   type PlanForCalendar,
 } from "./calendar.ts";
 import type { ContentPlanItemRecord } from "@/db/schema";
@@ -144,4 +145,103 @@ test("listCalendarEntries delegates to the list seam", async () => {
   const rows = await service.listCalendarEntries("user-7");
   assert.equal(rows.length, 1);
   assert.equal((rows[0] as { userId: string }).userId, "user-7");
+});
+
+// DEV-41: drag-and-drop reschedule.
+
+/** A service whose only live seam is the updater, for reschedule tests. */
+function rescheduleService(updateEntryDate: CalendarServiceConfig["updateEntryDate"]) {
+  return new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    updateEntryDate,
+  });
+}
+
+test("rescheduleEntry writes the new date scoped to the owner", async () => {
+  const calls: { userId: string; entryId: string; date: Date }[] = [];
+  const service = rescheduleService(async (args) => {
+    calls.push(args);
+    return { id: args.entryId, date: args.date } as never;
+  });
+
+  const row = await service.rescheduleEntry({
+    userId: "user-1",
+    entryId: "entry-9",
+    date: new Date(Date.UTC(2026, 5, 15)),
+  });
+
+  assert.equal(calls.length, 1);
+  // The user id must reach the update seam — it's the ownership scope.
+  assert.equal(calls[0].userId, "user-1");
+  assert.equal(calls[0].entryId, "entry-9");
+  assert.equal(calls[0].date.toISOString(), "2026-06-15T00:00:00.000Z");
+  assert.equal((row as { id: string }).id, "entry-9");
+});
+
+test("rescheduleEntry snaps the new date to UTC midnight", async () => {
+  let seen: Date | null = null;
+  const service = rescheduleService(async (args) => {
+    seen = args.date;
+    return { id: args.entryId } as never;
+  });
+
+  // A drop carrying a mid-day timestamp must still land on the day boundary,
+  // so grouping by UTC day keeps working after a reschedule.
+  await service.rescheduleEntry({
+    userId: "user-1",
+    entryId: "entry-9",
+    date: new Date("2026-06-15T17:45:00.000Z"),
+  });
+
+  assert.equal(seen!.toISOString(), "2026-06-15T00:00:00.000Z");
+});
+
+test("rescheduleEntry throws when the entry isn't the user's (or is missing)", async () => {
+  const service = rescheduleService(async () => null);
+  await assert.rejects(
+    () =>
+      service.rescheduleEntry({
+        userId: "someone-else",
+        entryId: "entry-9",
+        date: new Date(Date.UTC(2026, 5, 15)),
+      }),
+    /not found/i,
+  );
+});
+
+test("rescheduleEntry rejects a blank entry id before touching the db", async () => {
+  let called = false;
+  const service = rescheduleService(async (args) => {
+    called = true;
+    return { id: args.entryId } as never;
+  });
+  await assert.rejects(
+    () =>
+      service.rescheduleEntry({
+        userId: "user-1",
+        entryId: "  ",
+        date: new Date(Date.UTC(2026, 5, 15)),
+      }),
+    /required/i,
+  );
+  assert.equal(called, false);
+});
+
+test("rescheduleEntry rejects an invalid date before touching the db", async () => {
+  let called = false;
+  const service = rescheduleService(async (args) => {
+    called = true;
+    return { id: args.entryId } as never;
+  });
+  await assert.rejects(
+    () =>
+      service.rescheduleEntry({
+        userId: "user-1",
+        entryId: "entry-9",
+        date: new Date("not-a-date"),
+      }),
+    /date/i,
+  );
+  assert.equal(called, false);
 });

@@ -104,18 +104,31 @@ export type CalendarEntryInserter = (
 /** List a user's entries (newest scheduled date first). Injectable. */
 export type CalendarEntryLister = (userId: string) => Promise<CalendarEntry[]>;
 
+/**
+ * Move one entry to a new date, scoped to its owner. Resolves `null` when no
+ * row matched (missing, or owned by someone else). Injectable.
+ */
+export type CalendarEntryDateUpdater = (args: {
+  userId: string;
+  entryId: string;
+  date: Date;
+}) => Promise<CalendarEntry | null>;
+
 export interface CalendarServiceConfig {
   insertEntries?: CalendarEntryInserter;
   listEntries?: CalendarEntryLister;
+  updateEntryDate?: CalendarEntryDateUpdater;
 }
 
 export class CalendarService {
   private readonly insertEntries: CalendarEntryInserter;
   private readonly listEntries: CalendarEntryLister;
+  private readonly updateEntryDate: CalendarEntryDateUpdater;
 
   constructor(config: CalendarServiceConfig = {}) {
     this.insertEntries = config.insertEntries ?? defaultInsertEntries;
     this.listEntries = config.listEntries ?? defaultListEntries;
+    this.updateEntryDate = config.updateEntryDate ?? defaultUpdateEntryDate;
   }
 
   /**
@@ -136,6 +149,43 @@ export class CalendarService {
   /** A user's calendar entries (for the calendar view, DEV-41). */
   listCalendarEntries(userId: string): Promise<CalendarEntry[]> {
     return this.listEntries(userId);
+  }
+
+  /**
+   * DEV-41: move an entry to a new date (drag-and-drop reschedule). The date is
+   * snapped to UTC midnight so grouping-by-day keeps working afterwards, and
+   * the write is owner-scoped — rescheduling someone else's entry is a "not
+   * found", never a silent no-op that the UI would render as success.
+   */
+  async rescheduleEntry(args: {
+    userId: string;
+    entryId: string;
+    date: Date;
+  }): Promise<CalendarEntry> {
+    const entryId = args.entryId.trim();
+    if (!entryId) {
+      throw new Error("entryId is required");
+    }
+    if (Number.isNaN(args.date.getTime())) {
+      throw new Error("A valid date is required");
+    }
+
+    const date = new Date(
+      Date.UTC(
+        args.date.getUTCFullYear(),
+        args.date.getUTCMonth(),
+        args.date.getUTCDate(),
+      ),
+    );
+    const updated = await this.updateEntryDate({
+      userId: args.userId,
+      entryId,
+      date,
+    });
+    if (!updated) {
+      throw new Error("Calendar entry not found");
+    }
+    return updated;
   }
 }
 
@@ -166,6 +216,31 @@ const defaultListEntries: CalendarEntryLister = async (userId) => {
     .from(calendarEntries)
     .where(eq(calendarEntries.userId, userId))
     .orderBy(asc(calendarEntries.date));
+};
+
+/**
+ * Default reschedule — owner-scoped UPDATE. The `userId` predicate is what
+ * makes a cross-user reschedule return no rows (→ "not found") rather than
+ * moving another account's entry.
+ */
+const defaultUpdateEntryDate: CalendarEntryDateUpdater = async ({
+  userId,
+  entryId,
+  date,
+}) => {
+  const [{ db }, { calendarEntries }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [updated] = await db
+    .update(calendarEntries)
+    .set({ date })
+    .where(
+      and(eq(calendarEntries.id, entryId), eq(calendarEntries.userId, userId)),
+    )
+    .returning();
+  return updated ?? null;
 };
 
 export const calendarService = new CalendarService();
