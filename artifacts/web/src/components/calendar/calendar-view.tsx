@@ -207,12 +207,10 @@ export function CalendarView({
 
       {/*
         Subtle enter fade on each view/period change (DESIGN MOTION_INTENSITY 5).
-        CSS via tailwindcss-animate rather than framer-motion: a `motion.div`
-        here stayed stranded at `opacity: 0` (its animation never started, even
-        though the component hydrated and framer-motion animates fine on the
-        landing page). A decorative fade must never be able to hide the grid, and
-        a CSS animation's worst case is simply "no animation". Logged as tech
-        debt on DEV-41.
+        Plain CSS via tailwindcss-animate rather than framer-motion: a fade this
+        simple needs no JS animation runtime, and keeping it out of the bundle
+        costs this page ~40 kB of first-load JS. framer-motion stays the right
+        tool for genuinely interactive motion (drag, layout, gestures).
       */}
       <div
         key={`${mode}-${toDateKey(anchor)}`}
