@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { friendlyPlanItemError } from "@/lib/plan-errors";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { ContentPlanItemRecord } from "@/db/schema";
@@ -174,7 +175,7 @@ export function PlanItemCard({
                 </span>
               )}
               {item.status === "failed" && (
-                <span className="inline-flex items-center gap-2">
+                <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-500">
                     Failed
                   </span>
@@ -186,6 +187,15 @@ export function PlanItemCard({
                       <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} /> Retry
                     </button>
                   )}
+                  {/*
+                    Why it failed, in plain English. The stored error is raw
+                    provider output (status codes, model names, the whole
+                    generated prompt), so it is translated rather than shown —
+                    see plan-errors.ts. The raw text stays in the DB and logs.
+                  */}
+                  <span className="w-full text-muted-foreground">
+                    {friendlyPlanItemError(item.error)}
+                  </span>
                 </span>
               )}
             </div>

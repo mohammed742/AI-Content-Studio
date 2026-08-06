@@ -33,7 +33,16 @@ export interface QueueBusinessProfile {
   brandTone: string;
   brandColors?: string[];
   targetCustomers?: string | null;
-  products: { name: string; description?: string | null }[];
+  // `imageUrl` is the product's own photo. The product-photo pipeline's model
+  // (`ai-product-shot`) is Image-to-Image, so an item can only take that route
+  // when its product has one. Business Profile products carry no image column
+  // today, so in practice this is always absent and product_showcase falls back
+  // to the graphic pipeline — the field is the seam for when uploads land.
+  products: {
+    name: string;
+    description?: string | null;
+    imageUrl?: string | null;
+  }[];
 }
 
 export interface ProcessPlanRequest {
@@ -55,6 +64,8 @@ export type PhotoPipeline = (args: {
   userId: string;
   product: { name: string; description?: string | null };
   business: QueueBusinessProfile;
+  /** The product's own photo — required; the scene model is Image-to-Image. */
+  sourceImageUrl: string;
 }) => Promise<Pick<ProductPhotoResult, "imageUrl" | "cost">>;
 
 export type GraphicPipeline = (args: {
@@ -170,8 +181,12 @@ export class GenerationQueueService {
         item.type === "product_showcase"
           ? await (async () => {
               const product = matchProduct(item, profile.products);
-              if (!product) {
-                // No products on the profile — fall back to a graphic.
+              // The scene model is Image-to-Image, so the photo pipeline needs
+              // the product's own photo. Without a product — or without its
+              // image — fall back to a graphic rather than submitting an
+              // incomplete request (which the API rejects with a 422).
+              const sourceImageUrl = product?.imageUrl ?? null;
+              if (!product || !sourceImageUrl) {
                 return this.graphic({
                   userId,
                   business: profile,
@@ -180,7 +195,12 @@ export class GenerationQueueService {
                   platform: item.platform,
                 });
               }
-              return this.photo({ userId, product, business: profile });
+              return this.photo({
+                userId,
+                product,
+                business: profile,
+                sourceImageUrl,
+              });
             })()
           : await this.graphic({
               userId,
@@ -227,9 +247,19 @@ export class GenerationQueueService {
 }
 
 /** Default pipelines — the real DEV-19/21/22/23 services, lazily loaded. */
-const defaultPhoto: PhotoPipeline = async ({ userId, product, business }) => {
+const defaultPhoto: PhotoPipeline = async ({
+  userId,
+  product,
+  business,
+  sourceImageUrl,
+}) => {
   const { productPhotoService } = await import("@/lib/product-photo");
-  return productPhotoService.generate({ userId, product, business });
+  return productPhotoService.generate({
+    userId,
+    product,
+    business,
+    sourceImageUrl,
+  });
 };
 
 const defaultGraphic: GraphicPipeline = async ({

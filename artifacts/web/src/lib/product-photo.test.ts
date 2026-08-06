@@ -80,19 +80,41 @@ test("minimal pipeline: retrieve → scene, routed model flows through untouched
   ]);
   const service = new ProductPhotoService({ muapi: muapi.fn, retrieve: retrieve.fn });
 
-  const result = await service.generate(request());
+  // `ai-product-shot` is Image-to-Image, so a source photo is mandatory.
+  const result = await service.generate(
+    request({ sourceImageUrl: "https://upload/orig.png" }),
+  );
 
   assert.equal(retrieve.calls.length, 1);
-  assert.equal(muapi.calls.length, 1);
-  assert.equal(muapi.calls[0].step, "execute:product_photo");
-  assert.equal(muapi.calls[0].model, "ai-product-shot"); // routed model, no shim
-  assert.match(String(muapi.calls[0].params.prompt), /Margherita Pizza/);
-  assert.match(String(muapi.calls[0].params.prompt), /Brand context:/);
+  // bg removal, then the scene.
+  assert.equal(muapi.calls.length, 2);
+  assert.equal(muapi.calls[1].step, "execute:product_photo");
+  assert.equal(muapi.calls[1].model, "ai-product-shot"); // routed model, no shim
+  // The model's required field is `scene_description`, NOT `prompt` — sending
+  // `prompt` is what produced the live 422 that failed every product_showcase.
+  assert.match(String(muapi.calls[1].params.scene_description), /Margherita Pizza/);
+  assert.match(String(muapi.calls[1].params.scene_description), /Brand context:/);
+  assert.equal(muapi.calls[1].params.prompt, undefined);
   assert.equal(result.model, "ai-product-shot");
   assert.equal(result.imageUrl, "https://img/execute:product_photo");
   assert.deepEqual(result.reframes, []);
-  assert.equal(result.steps.length, 1);
-  assert.equal(result.cost, 0.05);
+  assert.equal(result.steps.length, 2);
+});
+
+test("generate fails loud without a source image (ai-product-shot is img2img)", async () => {
+  const muapi = fakeMuapi();
+  const service = new ProductPhotoService({
+    muapi: muapi.fn,
+    retrieve: fakeRetrieve().fn,
+  });
+
+  // Regression: this used to submit `{prompt}` with no `image_url` and come
+  // back as an opaque Muapi 422. Fail before spending a call instead.
+  await assert.rejects(
+    () => service.generate(request()),
+    /product image is required/i,
+  );
+  assert.equal(muapi.calls.length, 0);
 });
 
 test("full pipeline: bg removal feeds the scene, then reframes; costs aggregate", async () => {
@@ -112,9 +134,10 @@ test("full pipeline: bg removal feeds the scene, then reframes; costs aggregate"
     muapi.calls.map((c) => c.step),
     ["execute:bg_removal", "execute:product_photo", "execute:reframe", "execute:reframe"],
   );
-  // bg removal output is fed into the scene call as `image`.
+  // bg removal output is fed into the scene call as `image_url` (the field
+  // `ai-product-shot` actually requires — `image` was silently ignored).
   assert.equal(muapi.calls[0].params.image, "https://upload/orig.png");
-  assert.equal(muapi.calls[1].params.image, "https://img/execute:bg_removal");
+  assert.equal(muapi.calls[1].params.image_url, "https://img/execute:bg_removal");
   // reframes reference the scene image + carry the aspect ratio.
   assert.equal(muapi.calls[2].params.image, "https://img/execute:product_photo");
   assert.equal(muapi.calls[2].params.aspect_ratio, "9:16");
@@ -125,13 +148,14 @@ test("full pipeline: bg removal feeds the scene, then reframes; costs aggregate"
   assert.ok(Math.abs(result.cost - 0.17) < 1e-9);
 });
 
-test("skips background removal when no source image is provided", async () => {
+test("always runs background removal on the supplied product photo", async () => {
   const muapi = fakeMuapi();
   const service = new ProductPhotoService({ muapi: muapi.fn, retrieve: fakeRetrieve().fn });
 
-  await service.generate(request());
+  await service.generate(request({ sourceImageUrl: "https://upload/orig.png" }));
 
-  assert.ok(!muapi.calls.some((c) => c.step === "execute:bg_removal"));
+  // The photo is now mandatory, so bg removal is no longer conditional.
+  assert.ok(muapi.calls.some((c) => c.step === "execute:bg_removal"));
 });
 
 test("propagates a Muapi failure", async () => {
@@ -140,5 +164,8 @@ test("propagates a Muapi failure", async () => {
   };
   const service = new ProductPhotoService({ muapi: failing, retrieve: fakeRetrieve().fn });
 
-  await assert.rejects(() => service.generate(request()), /muapi 500/);
+  await assert.rejects(
+    () => service.generate(request({ sourceImageUrl: "https://upload/orig.png" })),
+    /muapi 500/,
+  );
 });

@@ -125,14 +125,25 @@ export class ProductPhotoService {
   }
 
   /**
-   * Run the product-photo pipeline. Background removal runs only when a source
-   * image is supplied; reframe runs only for requested aspect ratios. Throws
-   * on any Muapi/retrieval failure.
+   * Run the product-photo pipeline: background removal on the product photo,
+   * then scene generation, then reframe for any requested aspect ratios.
+   * Throws on any Muapi/retrieval failure.
+   *
+   * A `sourceImageUrl` is **required** — the scene model is Image-to-Image.
+   * Callers without a product photo should use the social-graphic pipeline
+   * instead (the Generation Queue falls back automatically).
    */
   async generate(request: ProductPhotoRequest): Promise<ProductPhotoResult> {
     const quality = request.quality ?? "standard";
     const steps: PipelineStep[] = [];
     let cost = 0;
+
+    // Fail before spending an API call — omitting it yielded an opaque 422.
+    if (!request.sourceImageUrl) {
+      throw new Error(
+        "A product image is required for the product-photo pipeline (the scene model is image-to-image).",
+      );
+    }
 
     const chunks = await this.retrieve(
       request.userId,
@@ -141,9 +152,9 @@ export class ProductPhotoService {
     );
     const context = chunks.map((chunk) => `- ${chunk.content}`).join("\n");
 
-    // Optional: background removal on an uploaded product image.
+    // Background removal on the uploaded product image, feeding the scene.
     let sourceImageUrl = request.sourceImageUrl;
-    if (sourceImageUrl) {
+    {
       const model = this.router.getModel("background_removal", quality);
       const removed = await this.muapi(
         model,
@@ -155,14 +166,19 @@ export class ProductPhotoService {
       sourceImageUrl = removed.imageUrl;
     }
 
-    // Scene generation.
+    // Scene generation. The model's required fields are `scene_description`
+    // and `image_url` — params are serialized straight into the request body
+    // (see muapi.ts), so these names must match the model contract exactly.
+    // Sending `prompt`/`image` is what made every product_showcase item 422.
     const sceneModel = this.router.getModel("product_photo", quality);
     const params: MuapiGenerateParams = {
-      prompt: buildScenePrompt(request.product, request.business, context),
+      scene_description: buildScenePrompt(
+        request.product,
+        request.business,
+        context,
+      ),
+      image_url: sourceImageUrl,
     };
-    if (sourceImageUrl) {
-      params.image = sourceImageUrl;
-    }
     const scene = await this.muapi(sceneModel, params, {
       step: "execute:product_photo",
     });

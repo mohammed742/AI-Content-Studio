@@ -43,7 +43,13 @@ function request(items: ContentPlanItemRecord[]): ProcessPlanRequest {
       businessType: "restaurant",
       brandTone: "friendly",
       products: [
-        { name: "Margherita Pizza", description: "wood-fired" },
+        // Carries a photo, so the default fixture exercises the photo path —
+        // `ai-product-shot` is Image-to-Image and unreachable without one.
+        {
+          name: "Margherita Pizza",
+          description: "wood-fired",
+          imageUrl: "https://img/pizza.png",
+        },
         { name: "Tiramisu" },
       ],
     },
@@ -53,11 +59,13 @@ function request(items: ContentPlanItemRecord[]): ProcessPlanRequest {
 
 function fakes() {
   const photoCalls: string[] = [];
+  const photoSourceImages: (string | undefined)[] = [];
   const graphicCalls: string[] = [];
   const updates: Array<{ itemId: string; patch: Partial<ContentPlanItemRecord> }> = [];
 
-  const photo: PhotoPipeline = async ({ product }) => {
+  const photo: PhotoPipeline = async ({ product, sourceImageUrl }) => {
     photoCalls.push(product.name);
+    photoSourceImages.push(sourceImageUrl);
     return { imageUrl: "https://gen/photo.png", cost: 0.06 };
   };
   const graphic: GraphicPipeline = async ({ topic }) => {
@@ -77,7 +85,7 @@ function fakes() {
     updates.push({ itemId, patch });
   };
 
-  return { photo, graphic, caption, assemble, updateItem, photoCalls, graphicCalls, updates };
+  return { photo, graphic, caption, assemble, updateItem, photoCalls, photoSourceImages, graphicCalls, updates };
 }
 
 test("matchProduct prefers the product named in the item, else the first", () => {
@@ -96,17 +104,51 @@ test("matchProduct prefers the product named in the item, else the first", () =>
 test("routes product_showcase → photo pipeline, others → graphic pipeline", async () => {
   const f = fakes();
   const queue = new GenerationQueueService(f);
+  const req = request([
+    item({ id: "a", type: "product_showcase" }),
+    item({ id: "b", type: "promo", title: "Valentine's promo" }),
+    item({ id: "c", type: "ugc_ad", title: "UGC style ad" }),
+  ]);
+  // The photo pipeline is only reachable when the product has a real photo —
+  // `ai-product-shot` is Image-to-Image.
+  req.profile.products = [
+    { name: "Margherita Pizza", description: "wood-fired", imageUrl: "https://img/pizza.png" },
+  ];
 
-  await queue.processPlan(
-    request([
-      item({ id: "a", type: "product_showcase" }),
-      item({ id: "b", type: "promo", title: "Valentine's promo" }),
-      item({ id: "c", type: "ugc_ad", title: "UGC style ad" }),
-    ]),
-  );
+  await queue.processPlan(req);
 
   assert.deepEqual(f.photoCalls, ["Margherita Pizza"]); // matched from the title
   assert.equal(f.graphicCalls.length, 2); // promo + ugc_ad (video is Phase 3)
+});
+
+test("product_showcase whose product has no photo falls back to the graphic pipeline", async () => {
+  // Regression: products carry no image today, so this path used to call the
+  // img2img `ai-product-shot` with no `image_url` and 422 on every single
+  // product_showcase item in every plan.
+  const f = fakes();
+  const queue = new GenerationQueueService(f);
+  const req = request([item({ id: "a", type: "product_showcase" })]);
+  req.profile.products = [{ name: "Margherita Pizza", description: "wood-fired" }];
+
+  const result = await queue.processPlan(req);
+
+  assert.equal(result.completed, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(f.photoCalls.length, 0);
+  assert.equal(f.graphicCalls.length, 1);
+});
+
+test("product_showcase passes the product photo through to the photo pipeline", async () => {
+  const f = fakes();
+  const queue = new GenerationQueueService(f);
+  const req = request([item({ id: "a", type: "product_showcase" })]);
+  req.profile.products = [
+    { name: "Margherita Pizza", description: "wood-fired", imageUrl: "https://img/pizza.png" },
+  ];
+
+  await queue.processPlan(req);
+
+  assert.deepEqual(f.photoSourceImages, ["https://img/pizza.png"]);
 });
 
 test("completes items with kit id + media url and aggregates cost", async () => {
