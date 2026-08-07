@@ -41,6 +41,11 @@ export interface CalendarEntryView {
   /** "HH:MM" time-of-day. */
   time: string;
   assetKitId: string | null;
+  /**
+   * DEV-42: set once the Publish Scheduler has submitted this entry. A
+   * `scheduled` entry with a job is in flight and can no longer be pulled back.
+   */
+  publishJobId?: string | null;
 }
 
 /** One cell of the grid: a day, plus whatever is scheduled on it. */

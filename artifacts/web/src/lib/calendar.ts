@@ -114,21 +114,35 @@ export type CalendarEntryDateUpdater = (args: {
   date: Date;
 }) => Promise<CalendarEntry | null>;
 
+/**
+ * DEV-42: opt an entry into (or out of) scheduled publishing. A conditional,
+ * owner-scoped UPDATE — it resolves `null` when the transition isn't legal, so
+ * the caller can't be told a write happened that didn't. Injectable.
+ */
+export type CalendarEntryScheduleSetter = (args: {
+  userId: string;
+  entryId: string;
+  scheduled: boolean;
+}) => Promise<CalendarEntry | null>;
+
 export interface CalendarServiceConfig {
   insertEntries?: CalendarEntryInserter;
   listEntries?: CalendarEntryLister;
   updateEntryDate?: CalendarEntryDateUpdater;
+  setSchedule?: CalendarEntryScheduleSetter;
 }
 
 export class CalendarService {
   private readonly insertEntries: CalendarEntryInserter;
   private readonly listEntries: CalendarEntryLister;
   private readonly updateEntryDate: CalendarEntryDateUpdater;
+  private readonly setSchedule: CalendarEntryScheduleSetter;
 
   constructor(config: CalendarServiceConfig = {}) {
     this.insertEntries = config.insertEntries ?? defaultInsertEntries;
     this.listEntries = config.listEntries ?? defaultListEntries;
     this.updateEntryDate = config.updateEntryDate ?? defaultUpdateEntryDate;
+    this.setSchedule = config.setSchedule ?? defaultSetSchedule;
   }
 
   /**
@@ -187,6 +201,44 @@ export class CalendarService {
     }
     return updated;
   }
+
+  /**
+   * DEV-42: the scheduled-publishing opt-in. Nothing publishes itself until the
+   * user turns it on for that entry, so this is the switch the Publish
+   * Scheduler reads (`status = 'scheduled'`).
+   *
+   * Opting in also clears any previous attempt (`publishJobId` /
+   * `publishAttemptedAt`), which makes re-scheduling a `failed` entry the
+   * manual retry path — without it the scheduler's claim would never match the
+   * row again.
+   *
+   * Legality is enforced in the UPDATE's own predicate, not by reading first:
+   * an entry that is already in flight can't be pulled back, and only an entry
+   * with generated content can go out at all.
+   */
+  async setEntrySchedule(args: {
+    userId: string;
+    entryId: string;
+    scheduled: boolean;
+  }): Promise<CalendarEntry> {
+    const entryId = args.entryId.trim();
+    if (!entryId) {
+      throw new Error("entryId is required");
+    }
+    const updated = await this.setSchedule({
+      userId: args.userId,
+      entryId,
+      scheduled: args.scheduled,
+    });
+    if (!updated) {
+      throw new Error(
+        args.scheduled
+          ? "Calendar entry not found, or has no generated content yet"
+          : "Calendar entry not found, or is already publishing",
+      );
+    }
+    return updated;
+  }
 }
 
 /** Default insert — batch insert, skip conflicts on the plan-item unique key. */
@@ -240,6 +292,62 @@ const defaultUpdateEntryDate: CalendarEntryDateUpdater = async ({
       and(eq(calendarEntries.id, entryId), eq(calendarEntries.userId, userId)),
     )
     .returning();
+  return updated ?? null;
+};
+
+/**
+ * Default schedule setter — one conditional UPDATE per direction, where the
+ * WHERE clause *is* the rule:
+ *
+ * - **On**: only from `generated` or `failed`, and only with an Asset Kit to
+ *   publish. Clears the previous attempt so the scheduler can claim it again.
+ * - **Off**: only from `scheduled`, and only while `publish_job_id` is null —
+ *   once a publish is in flight there is nothing left to cancel on our side.
+ */
+const defaultSetSchedule: CalendarEntryScheduleSetter = async ({
+  userId,
+  entryId,
+  scheduled,
+}) => {
+  const [{ db }, { calendarEntries }, { and, eq, inArray, isNotNull, isNull }] =
+    await Promise.all([
+      import("@/db"),
+      import("@/db/schema"),
+      import("drizzle-orm"),
+    ]);
+
+  const owned = and(
+    eq(calendarEntries.id, entryId),
+    eq(calendarEntries.userId, userId),
+  );
+
+  const [updated] = scheduled
+    ? await db
+        .update(calendarEntries)
+        .set({
+          status: "scheduled",
+          publishJobId: null,
+          publishAttemptedAt: null,
+        })
+        .where(
+          and(
+            owned,
+            inArray(calendarEntries.status, ["generated", "failed"]),
+            isNotNull(calendarEntries.assetKitId),
+          ),
+        )
+        .returning()
+    : await db
+        .update(calendarEntries)
+        .set({ status: "generated", publishAttemptedAt: null })
+        .where(
+          and(
+            owned,
+            eq(calendarEntries.status, "scheduled"),
+            isNull(calendarEntries.publishJobId),
+          ),
+        )
+        .returning();
   return updated ?? null;
 };
 

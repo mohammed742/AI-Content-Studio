@@ -228,6 +228,94 @@ test("rescheduleEntry rejects a blank entry id before touching the db", async ()
   assert.equal(called, false);
 });
 
+// DEV-42: the scheduled-publishing opt-in.
+
+test("setEntrySchedule opts an entry in, scoped to the owner", async () => {
+  const calls: { userId: string; entryId: string; scheduled: boolean }[] = [];
+  const service = new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    setSchedule: async (args) => {
+      calls.push(args);
+      return { id: args.entryId, status: "scheduled" } as never;
+    },
+  });
+
+  const row = await service.setEntrySchedule({
+    userId: "user-1",
+    entryId: "entry-9",
+    scheduled: true,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].userId, "user-1"); // the ownership scope
+  assert.equal(calls[0].scheduled, true);
+  assert.equal((row as { status: string }).status, "scheduled");
+});
+
+test("setEntrySchedule opts an entry back out", async () => {
+  const calls: { scheduled: boolean }[] = [];
+  const service = new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    setSchedule: async (args) => {
+      calls.push(args);
+      return { id: args.entryId, status: "generated" } as never;
+    },
+  });
+
+  await service.setEntrySchedule({
+    userId: "user-1",
+    entryId: "entry-9",
+    scheduled: false,
+  });
+
+  assert.equal(calls[0].scheduled, false);
+});
+
+test("setEntrySchedule throws when the conditional update matches nothing", async () => {
+  // No row means: not theirs, missing, ungenerated, or already in flight — all
+  // of which must surface as a refusal rather than a silent success.
+  const service = new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    setSchedule: async () => null,
+  });
+
+  await assert.rejects(
+    () =>
+      service.setEntrySchedule({
+        userId: "user-1",
+        entryId: "entry-9",
+        scheduled: true,
+      }),
+    /not found|already/i,
+  );
+});
+
+test("setEntrySchedule rejects a blank entry id before touching the db", async () => {
+  let called = false;
+  const service = new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    setSchedule: async (args) => {
+      called = true;
+      return { id: args.entryId } as never;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.setEntrySchedule({
+        userId: "user-1",
+        entryId: "   ",
+        scheduled: true,
+      }),
+    /required/i,
+  );
+  assert.equal(called, false);
+});
+
 test("rescheduleEntry rejects an invalid date before touching the db", async () => {
   let called = false;
   const service = rescheduleService(async (args) => {

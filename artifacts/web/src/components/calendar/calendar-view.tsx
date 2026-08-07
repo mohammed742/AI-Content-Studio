@@ -54,9 +54,12 @@ import { DayPanel, type KitThumbnails } from "./day-panel";
 export function CalendarView({
   entries: serverEntries,
   thumbnails = {},
+  connectedPlatforms = [],
 }: {
   entries: CalendarEntryView[];
   thumbnails?: KitThumbnails;
+  /** DEV-42: platforms with a connected account — the ones we can schedule to. */
+  connectedPlatforms?: string[];
 }) {
   const router = useRouter();
 
@@ -73,13 +76,24 @@ export function CalendarView({
   // entryId → optimistic ISO date, layered over the server rows until the
   // refreshed props catch up (or the write fails and we drop the override).
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  // DEV-42: the same trick for the auto-publish opt-in.
+  const [statusOverrides, setStatusOverrides] = useState<
+    Record<string, CalendarEntryView["status"]>
+  >({});
 
   const entries = useMemo(
     () =>
-      serverEntries.map((entry) =>
-        overrides[entry.id] ? { ...entry, date: overrides[entry.id] } : entry,
-      ),
-    [serverEntries, overrides],
+      serverEntries.map((entry) => {
+        const date = overrides[entry.id];
+        const status = statusOverrides[entry.id];
+        if (!date && !status) return entry;
+        return {
+          ...entry,
+          ...(date ? { date } : {}),
+          ...(status ? { status } : {}),
+        };
+      }),
+    [serverEntries, overrides, statusOverrides],
   );
 
   const weeks = useMemo(
@@ -128,6 +142,54 @@ export function CalendarView({
       });
       toast.error(
         err instanceof Error ? err.message : "Couldn't reschedule that item.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /**
+   * DEV-42: opt an entry in or out of scheduled publishing. Optimistic like the
+   * reschedule above — flip the badge immediately, roll it back if the write
+   * fails, so the calendar never claims something is queued to post when it
+   * isn't.
+   */
+  async function toggleSchedule(entryId: string, scheduled: boolean) {
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    const previous = statusOverrides[entryId];
+    setStatusOverrides((prev) => ({
+      ...prev,
+      [entryId]: scheduled ? "scheduled" : "generated",
+    }));
+    setSavingId(entryId);
+
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId, scheduled }),
+      });
+      const payload = (await res.json()) as { error: string | null };
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Couldn't update that item.");
+      }
+      toast.success(
+        scheduled
+          ? `"${entry.title}" will publish on ${new Date(entry.date).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} at ${entry.time}`
+          : `"${entry.title}" won't publish automatically`,
+      );
+      router.refresh();
+    } catch (err) {
+      setStatusOverrides((prev) => {
+        const next = { ...prev };
+        if (previous) next[entryId] = previous;
+        else delete next[entryId];
+        return next;
+      });
+      toast.error(
+        err instanceof Error ? err.message : "Couldn't update that item.",
       );
     } finally {
       setSavingId(null);
@@ -248,6 +310,9 @@ export function CalendarView({
       <DayPanel
         day={selectedDay}
         thumbnails={thumbnails}
+        connectedPlatforms={connectedPlatforms}
+        savingId={savingId}
+        onToggleSchedule={toggleSchedule}
         onClose={() => setSelectedKey(null)}
       />
     </div>

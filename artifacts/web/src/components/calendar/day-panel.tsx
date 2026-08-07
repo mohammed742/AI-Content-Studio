@@ -13,7 +13,9 @@
  * description (DEV-40), so that would need a join back to the source Content
  * Plan. Deferred rather than silently dropped — noted on DEV-41.
  */
-import { CalendarDays, Film, ImageIcon } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, CalendarX, Film, ImageIcon, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -36,6 +38,9 @@ export type KitThumbnails = Record<
   string,
   { url: string; mediaType: "image" | "video" }
 >;
+
+/** DEV-42: the platforms scheduled publishing supports (schema SOCIAL_PLATFORMS). */
+const PUBLISHABLE_PLATFORMS = ["youtube", "tiktok", "instagram"];
 
 const PLATFORM_LABEL: Record<string, string> = {
   youtube: "YouTube",
@@ -64,10 +69,17 @@ const TONE_CLASS: Record<EntryStatusTone, string> = {
 export function DayPanel({
   day,
   thumbnails,
+  connectedPlatforms = [],
+  savingId = null,
+  onToggleSchedule,
   onClose,
 }: {
   day: CalendarDay | null;
   thumbnails: KitThumbnails;
+  /** DEV-42: platforms with a connected account. */
+  connectedPlatforms?: string[];
+  savingId?: string | null;
+  onToggleSchedule?: (entryId: string, scheduled: boolean) => void;
   onClose: () => void;
 }) {
   return (
@@ -101,6 +113,9 @@ export function DayPanel({
                     thumbnail={
                       entry.assetKitId ? thumbnails[entry.assetKitId] : undefined
                     }
+                    connectedPlatforms={connectedPlatforms}
+                    saving={savingId === entry.id}
+                    onToggleSchedule={onToggleSchedule}
                   />
                 ))}
               </ul>
@@ -115,9 +130,15 @@ export function DayPanel({
 function EntryRow({
   entry,
   thumbnail,
+  connectedPlatforms,
+  saving,
+  onToggleSchedule,
 }: {
   entry: CalendarEntryView;
   thumbnail?: { url: string; mediaType: "image" | "video" };
+  connectedPlatforms: string[];
+  saving: boolean;
+  onToggleSchedule?: (entryId: string, scheduled: boolean) => void;
 }) {
   const type = contentTypeMeta(entry.contentType);
   const status = entryStatusMeta(entry.status);
@@ -141,8 +162,90 @@ function EntryRow({
             {status.label}
           </span>
         </p>
+        <ScheduleControl
+          entry={entry}
+          connectedPlatforms={connectedPlatforms}
+          saving={saving}
+          onToggleSchedule={onToggleSchedule}
+        />
       </div>
     </li>
+  );
+}
+
+/**
+ * DEV-42: the scheduled-publishing opt-in. Nothing posts to a real account
+ * until the user turns it on here, which is why this is a per-item control
+ * rather than a global setting.
+ *
+ * Only offered where it means something: an entry with generated media, on a
+ * platform we can publish to. Once the scheduler has submitted the entry
+ * (`publishJobId` set) there is nothing left to cancel on our side, so the
+ * control becomes a plain "Publishing…" note.
+ */
+function ScheduleControl({
+  entry,
+  connectedPlatforms,
+  saving,
+  onToggleSchedule,
+}: {
+  entry: CalendarEntryView;
+  connectedPlatforms: string[];
+  saving: boolean;
+  onToggleSchedule?: (entryId: string, scheduled: boolean) => void;
+}) {
+  if (!onToggleSchedule || !entry.assetKitId) {
+    return null;
+  }
+  const platform = entry.platform.trim().toLowerCase();
+  if (!PUBLISHABLE_PLATFORMS.includes(platform)) {
+    return null;
+  }
+  if (entry.status === "published") {
+    return null;
+  }
+  if (entry.status === "scheduled" && entry.publishJobId) {
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">
+        Publishing to {PLATFORM_LABEL[platform] ?? platform}…
+      </p>
+    );
+  }
+
+  const connected = connectedPlatforms.includes(platform);
+  if (!connected) {
+    return (
+      <p className="mt-2 text-xs text-muted-foreground">
+        <Link href="/social" className="underline underline-offset-2">
+          Connect {PLATFORM_LABEL[platform] ?? platform}
+        </Link>{" "}
+        to publish this automatically.
+      </p>
+    );
+  }
+
+  const scheduled = entry.status === "scheduled";
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={scheduled ? "outline" : "secondary"}
+      className="mt-2 h-7 text-xs"
+      disabled={saving}
+      onClick={() => onToggleSchedule(entry.id, !scheduled)}
+    >
+      {scheduled ? (
+        <>
+          <CalendarX className="h-3.5 w-3.5" />
+          Cancel auto-publish
+        </>
+      ) : (
+        <>
+          <Send className="h-3.5 w-3.5" />
+          Publish automatically
+        </>
+      )}
+    </Button>
   );
 }
 

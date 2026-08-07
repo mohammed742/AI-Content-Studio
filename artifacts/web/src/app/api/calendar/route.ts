@@ -1,9 +1,11 @@
 /**
  * DEV-41 (STU-39): Content Calendar API.
  *
- * PATCH — reschedule a Calendar Entry to a new date (drag-and-drop on the
- *         month/week grid). Owner-scoped via our internal user id, so dragging
- *         someone else's entry is a 404 rather than a cross-account write.
+ * PATCH — mutate one Calendar Entry, owner-scoped via our internal user id, so
+ *         touching someone else's entry is a 404 rather than a cross-account
+ *         write. Two mutations share the verb because they're one row edit:
+ *           • `{ entryId, date }`      — reschedule (drag-and-drop on the grid)
+ *           • `{ entryId, scheduled }` — DEV-42, opt in/out of auto-publishing
  *
  * Browser-called via fetch, self-authing with `auth()` — the same shape as
  * /api/social/accounts (the CLAUDE.md "Server Actions only" rule is stale;
@@ -33,7 +35,7 @@ export async function PATCH(req: Request) {
     return unauthorized();
   }
 
-  let body: { entryId?: unknown; date?: unknown };
+  let body: { entryId?: unknown; date?: unknown; scheduled?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -50,6 +52,35 @@ export async function PATCH(req: Request) {
       { data: null, error: "entryId is required" },
       { status: 400 },
     );
+  }
+
+  // DEV-42: the auto-publish opt-in. Checked before the date branch so a body
+  // carrying `scheduled` is never mistaken for a reschedule.
+  if (typeof body.scheduled === "boolean") {
+    try {
+      const entry = await calendarService.setEntrySchedule({
+        userId: user.id,
+        entryId,
+        scheduled: body.scheduled,
+      });
+      return NextResponse.json({
+        data: { entry: { id: entry.id, status: entry.status } },
+        error: null,
+      });
+    } catch (err) {
+      // The service's refusals are all "this transition isn't legal for you" —
+      // not found, not yours, not generated, or already in flight.
+      const message =
+        err instanceof Error ? err.message : "Couldn't update that item.";
+      if (/not found/i.test(message)) {
+        return NextResponse.json({ data: null, error: message }, { status: 404 });
+      }
+      console.error("Calendar schedule toggle failed", err);
+      return NextResponse.json(
+        { data: null, error: "Couldn't update that item. Please try again." },
+        { status: 502 },
+      );
+    }
   }
 
   // `YYYY-MM-DD` → UTC midnight. Throws on a malformed or out-of-range key.

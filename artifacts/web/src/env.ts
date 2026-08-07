@@ -51,6 +51,10 @@ const envSchema = z.object({
     .string()
     .min(1, "R2_PUBLIC_URL is required")
     .transform((v) => v.replace(/\/$/, "")),
+  // DEV-42: shared secret the scheduled-publishing cron must present. Optional
+  // on purpose — a missing secret must not stop the whole app booting, so
+  // /api/cron/publish fails closed (503) at request time instead.
+  CRON_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

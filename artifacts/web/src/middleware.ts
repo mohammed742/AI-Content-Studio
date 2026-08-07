@@ -15,10 +15,13 @@ const isWebhookRoute = createRouteMatcher([
   "/api/webhooks(.*)",
   "/webhook(.*)",
 ]);
+// DEV-42: the scheduled-publishing cron. Machine-called like the webhooks, with
+// no Clerk session to find — it authenticates itself with a bearer secret.
+const isCronRoute = createRouteMatcher(["/api/cron(.*)"]);
 const isAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isWebhookRoute(req)) {
+  if (isWebhookRoute(req) || isCronRoute(req)) {
     return;
   }
 

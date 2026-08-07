@@ -22,6 +22,7 @@ src/components/calendar/, src/jobs/publish-scheduler.ts
 3. Calendar: month grid + week timeline. Color-coded by type. Drag-and-drop reschedule. Click day → slide-over with items.
 4. "Plan This Week" CTA → navigates to /plan for selected week
 5. Cron: check entries where date+time <= now AND status = generated AND connected account → Muapi publish → update to published
+   - ⚠️ **Amended in DEV-42 (human-approved 2026-08-07):** the gate is `status = scheduled`, **not** `generated`. As written, approving a plan would silently post to real YouTube/TikTok/Instagram accounts days later with no per-post confirmation. Auto-publishing is now an explicit per-item opt-in in the calendar day panel (`generated` → `scheduled`), which is also what makes step 6's status flow mean something. The cron is `POST /api/cron/publish` behind a bearer secret; no `src/jobs/publish-scheduler.ts` was needed.
 6. Status flow: planned → generated → scheduled → published
 
 ## Acceptance Criteria

@@ -748,6 +748,21 @@ export const calendarEntries = pgTable(
     status: text("status", { enum: CALENDAR_ENTRY_STATUSES })
       .notNull()
       .default("planned"),
+    // DEV-42: the Publish Job the scheduler submitted for this entry. SET NULL
+    // like the refs above — a pruned job must not erase the calendar row. Its
+    // presence is also what distinguishes a `scheduled` entry that is waiting
+    // for its time (null) from one already in flight (set).
+    publishJobId: text("publish_job_id").references(() => publishJobs.id, {
+      onDelete: "set null",
+    }),
+    // DEV-42: set by the scheduler's claim-before-submit UPDATE. Two overlapping
+    // cron runs would otherwise both submit the same due entry — two real posts,
+    // two charges. Claiming on this column (rather than flipping `status`, which
+    // is already `scheduled` by the time we get here) makes the loser's
+    // conditional update return no row, so it skips.
+    publishAttemptedAt: timestamp("publish_attempted_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -758,6 +773,10 @@ export const calendarEntries = pgTable(
   },
   (table) => [
     index("calendar_entries_user_id_idx").on(table.userId),
+    // DEV-42: the scheduler's due-entry scan is the first query in the codebase
+    // that runs across all users rather than within one, so it needs its own
+    // index — `user_id` doesn't help it.
+    index("calendar_entries_status_date_idx").on(table.status, table.date),
     // Idempotent auto-create: one entry per plan item, so re-approving a plan
     // (retry) never duplicates. NULL content_plan_id rows (orphaned standalone)
     // are treated as distinct by Postgres, which is the intended behavior.

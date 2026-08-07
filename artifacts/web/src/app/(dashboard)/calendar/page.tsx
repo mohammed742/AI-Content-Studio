@@ -19,6 +19,7 @@ import { db } from "@/db";
 import { assetKits } from "@/db/schema";
 import { ensureLocalUser } from "@/lib/local-user";
 import { calendarService } from "@/lib/calendar";
+import { socialPublishingService } from "@/lib/social-publishing";
 import type { CalendarEntryView } from "@/lib/calendar-view";
 import { CalendarView } from "@/components/calendar/calendar-view";
 import type { KitThumbnails } from "@/components/calendar/day-panel";
@@ -51,7 +52,19 @@ export default async function CalendarPage() {
     date: entry.date.toISOString(),
     time: entry.time,
     assetKitId: entry.assetKitId,
+    publishJobId: entry.publishJobId,
   }));
+
+  // DEV-42: which platforms this user can actually auto-publish to. Scheduling
+  // an entry whose platform has no connected account would leave it sitting in
+  // `scheduled` for ever, so the day panel disables the control and says why.
+  const connectedPlatforms = [
+    ...new Set(
+      (await socialPublishingService.listAccounts(user.id)).map(
+        (account) => account.platform as string,
+      ),
+    ),
+  ];
 
   // Thumbnails for the day slide-over (DESIGN §9.8 — "thumbnail (if
   // generated)"). One scoped query keyed by kit id, rather than a join per
@@ -71,5 +84,11 @@ export default async function CalendarPage() {
     }
   }
 
-  return <CalendarView entries={entries} thumbnails={thumbnails} />;
+  return (
+    <CalendarView
+      entries={entries}
+      thumbnails={thumbnails}
+      connectedPlatforms={connectedPlatforms}
+    />
+  );
 }
