@@ -5,7 +5,7 @@
  * type badge (top-left), platform (top-right), date + one-tap thumbs
  * (bottom). Filled thumb = current rating. Click opens the lightbox.
  */
-import { ThumbsUp, ThumbsDown, PlayCircle, Layers } from "lucide-react";
+import { ThumbsUp, ThumbsDown, PlayCircle, Layers, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/lib/gallery";
 import type { FeedbackRating } from "@/db/schema";
@@ -65,6 +65,18 @@ export function GalleryCard({
         <span className="pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
           <Layers className="h-3 w-3" strokeWidth={1.5} />
           {frameCount}
+        </span>
+      )}
+
+      {/* DEV-43: this kit has actually gone live on a platform. Persistent
+          rather than hover-only — "is this already out?" is the kind of thing
+          you scan a grid for. Fades on hover so it never stacks on the
+          overlay's type badge, which occupies the same corner. Emerald matches
+          the published tone used by the calendar and publishing history. */}
+      {item.status === "published" && (
+        <span className="pointer-events-none absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-xs font-medium text-white opacity-100 transition-opacity group-hover:opacity-0">
+          <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
+          Published
         </span>
       )}
 

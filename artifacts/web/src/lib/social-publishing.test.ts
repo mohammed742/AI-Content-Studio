@@ -1045,3 +1045,146 @@ test("listPublishJobs passes through the DB lister for a user with no in-flight 
   const service = new SocialPublishingService({ listJobs: async () => [] });
   assert.deepEqual(await service.listPublishJobs("user_1"), []);
 });
+
+// --- DEV-43: status tracking on publish completion -------------------------
+
+const DEV43_PARAMS = {
+  account_id: 42,
+  media_url: "https://x/v.mp4",
+  title: "T",
+  privacy: "public",
+};
+
+/** A `processing` job for one kit, ready to be polled to a terminal state. */
+function jobAwaitingPoll(assetKitId: string | null = "kit_1"): PublishJob {
+  return fakeJob({
+    userId: "user_1",
+    assetKitId,
+    platform: "youtube",
+    muapiRequestId: "req_1",
+    status: "processing",
+    title: "T",
+    mediaUrl: "https://x/v.mp4",
+    params: DEV43_PARAMS,
+  });
+}
+
+test("a completed publish records the kit as published", async () => {
+  const recorded: Array<{ userId: string; assetKitId: string }> = [];
+  const processing = jobAwaitingPoll();
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "completed", resultUrl: "https://y/1", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async (args) => {
+      recorded.push(args);
+    },
+  });
+
+  const job = await service.refreshPublishJob("user_1", "job_1");
+
+  assert.equal(job.status, "completed");
+  assert.deepEqual(recorded, [{ userId: "user_1", assetKitId: "kit_1" }]);
+});
+
+test("a failed publish records nothing", async () => {
+  const processing = jobAwaitingPoll();
+  let recorded = false;
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "failed", error: "quota exceeded", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async () => {
+      recorded = true;
+    },
+  });
+
+  await service.refreshPublishJob("user_1", "job_1");
+
+  assert.equal(recorded, false);
+});
+
+test("a still-processing publish records nothing", async () => {
+  const processing = jobAwaitingPoll();
+  let recorded = false;
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "processing", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async () => {
+      recorded = true;
+    },
+  });
+
+  await service.refreshPublishJob("user_1", "job_1");
+
+  assert.equal(recorded, false);
+});
+
+test("a completed publish whose kit was deleted records nothing", async () => {
+  // `publish_jobs.asset_kit_id` is SET NULL, so history outlives the kit.
+  const processing = jobAwaitingPoll(null);
+  let recorded = false;
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "completed", resultUrl: "https://y/1", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async () => {
+      recorded = true;
+    },
+  });
+
+  const job = await service.refreshPublishJob("user_1", "job_1");
+
+  assert.equal(job.status, "completed");
+  assert.equal(recorded, false);
+});
+
+test("a status-tracking failure never costs the user their publish record", async () => {
+  const processing = jobAwaitingPoll();
+  const service = new SocialPublishingService({
+    getJob: async () => processing,
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "completed", resultUrl: "https://y/1", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async () => {
+      throw new Error("db unreachable");
+    },
+  });
+
+  const job = await service.refreshPublishJob("user_1", "job_1");
+
+  assert.equal(job.status, "completed");
+  assert.equal(job.resultUrl, "https://y/1");
+});
+
+test("listPublishJobs records a publish it advances on read (the manual path)", async () => {
+  // The /social page's read-poll is how a manually published kit reaches
+  // `completed` — it must flip statuses exactly like the scheduler's poll does.
+  const processing = jobAwaitingPoll();
+  const recorded: string[] = [];
+  const service = new SocialPublishingService({
+    listJobs: async () => [processing],
+    publishClient: fakePublishClient({
+      pollPublish: async () => ({ status: "completed", resultUrl: "https://y/1", cost: 0 }),
+    }),
+    updateJob: async (_u, _j, p) => fakeJob({ ...processing, ...p, params: DEV43_PARAMS }),
+    recordPublished: async ({ assetKitId }) => {
+      recorded.push(assetKitId);
+    },
+  });
+
+  const jobs = await service.listPublishJobs("user_1");
+
+  assert.equal(jobs[0].status, "completed");
+  assert.deepEqual(recorded, ["kit_1"]);
+});

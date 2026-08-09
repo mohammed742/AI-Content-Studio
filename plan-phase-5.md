@@ -1,6 +1,6 @@
 # Phase 5 — Content Calendar + Scheduling
 
-**Status**: Not started
+**Status**: All 4 slices built (STU-38/39/40 committed; STU-41 built 2026-08-07, awaiting review + live QA)
 **Goal**: Visual calendar integrating with Content Plans. Scheduled auto-publishing.
 
 ## Slices
@@ -24,6 +24,7 @@ src/components/calendar/, src/jobs/publish-scheduler.ts
 5. Cron: check entries where date+time <= now AND status = generated AND connected account → Muapi publish → update to published
    - ⚠️ **Amended in DEV-42 (human-approved 2026-08-07):** the gate is `status = scheduled`, **not** `generated`. As written, approving a plan would silently post to real YouTube/TikTok/Instagram accounts days later with no per-post confirmation. Auto-publishing is now an explicit per-item opt-in in the calendar day panel (`generated` → `scheduled`), which is also what makes step 6's status flow mean something. The cron is `POST /api/cron/publish` behind a bearer secret; no `src/jobs/publish-scheduler.ts` was needed.
 6. Status flow: planned → generated → scheduled → published
+   - ✅ **Closed in DEV-43 (2026-08-07):** the plan assumed the flow would advance itself. It did not — entries were created `planned` and nothing ever updated them, so with a null Asset Kit the step-5 opt-in was unreachable. DEV-43 adds the two missing writes: the Generation Queue advances `planned` → `generated` (attaching the kit), and a completed Publish Job marks the kit **and** its entries `published` — hooked where *manual* publishes pass too, not just the cron. A generation failure deliberately leaves the entry `planned` (`failed` means the publish failed). Kit status surfaces as a "Published" badge in the Gallery.
 
 ## Acceptance Criteria
 - Approved plan with 7 items → 7 calendar entries at planned days

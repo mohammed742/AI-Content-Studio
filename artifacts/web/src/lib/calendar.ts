@@ -125,11 +125,36 @@ export type CalendarEntryScheduleSetter = (args: {
   scheduled: boolean;
 }) => Promise<CalendarEntry | null>;
 
+/**
+ * DEV-43: attach a freshly generated Asset Kit to its entry and advance it to
+ * `generated`. Keyed on the plan item (not an entry id) because the Generation
+ * Queue only knows which *item* it just finished. Resolves `null` when nothing
+ * matched. Injectable.
+ */
+export type CalendarEntryGeneratedMarker = (args: {
+  userId: string;
+  contentPlanId: string;
+  planItemId: string;
+  assetKitId: string;
+}) => Promise<CalendarEntry | null>;
+
+/**
+ * DEV-43: mark every entry carrying an Asset Kit `published`, once that kit has
+ * actually gone out. Plural because one kit may fill more than one slot.
+ * Injectable.
+ */
+export type CalendarEntryPublishedMarker = (args: {
+  userId: string;
+  assetKitId: string;
+}) => Promise<CalendarEntry[]>;
+
 export interface CalendarServiceConfig {
   insertEntries?: CalendarEntryInserter;
   listEntries?: CalendarEntryLister;
   updateEntryDate?: CalendarEntryDateUpdater;
   setSchedule?: CalendarEntryScheduleSetter;
+  markGenerated?: CalendarEntryGeneratedMarker;
+  markPublished?: CalendarEntryPublishedMarker;
 }
 
 export class CalendarService {
@@ -137,12 +162,16 @@ export class CalendarService {
   private readonly listEntries: CalendarEntryLister;
   private readonly updateEntryDate: CalendarEntryDateUpdater;
   private readonly setSchedule: CalendarEntryScheduleSetter;
+  private readonly markGenerated: CalendarEntryGeneratedMarker;
+  private readonly markPublished: CalendarEntryPublishedMarker;
 
   constructor(config: CalendarServiceConfig = {}) {
     this.insertEntries = config.insertEntries ?? defaultInsertEntries;
     this.listEntries = config.listEntries ?? defaultListEntries;
     this.updateEntryDate = config.updateEntryDate ?? defaultUpdateEntryDate;
     this.setSchedule = config.setSchedule ?? defaultSetSchedule;
+    this.markGenerated = config.markGenerated ?? defaultMarkGenerated;
+    this.markPublished = config.markPublished ?? defaultMarkPublished;
   }
 
   /**
@@ -238,6 +267,58 @@ export class CalendarService {
       );
     }
     return updated;
+  }
+
+  /**
+   * DEV-43: the `planned` → `generated` half of the status flow. Called when
+   * the Generation Queue finishes an item — the entry picks up the Asset Kit
+   * that item produced, which is what makes the DEV-42 schedule opt-in
+   * reachable at all (it requires `generated` *and* a kit).
+   *
+   * Resolves `null` rather than throwing when nothing matched: unlike
+   * `setEntrySchedule` (a user action, where a refusal is an error to report),
+   * this is a background bookkeeping write, and "no matching entry" is an
+   * ordinary outcome — the plan may have no calendar entries, or the entry may
+   * already be further along. Only a genuinely malformed call fails loud.
+   */
+  async markEntryGenerated(args: {
+    userId: string;
+    contentPlanId: string;
+    planItemId: string;
+    assetKitId: string;
+  }): Promise<CalendarEntry | null> {
+    const contentPlanId = args.contentPlanId.trim();
+    const planItemId = args.planItemId.trim();
+    const assetKitId = args.assetKitId.trim();
+    if (!contentPlanId || !planItemId || !assetKitId) {
+      throw new Error(
+        "contentPlanId, planItemId and assetKitId are required",
+      );
+    }
+    return this.markGenerated({
+      userId: args.userId,
+      contentPlanId,
+      planItemId,
+      assetKitId,
+    });
+  }
+
+  /**
+   * DEV-43: mark the calendar slots an Asset Kit fills as `published`, once
+   * that kit has actually gone out. Driven by a Publish Job reaching
+   * `completed`, so it covers a manual publish from `/social` as well as the
+   * scheduler's own run. Returns the rows it flipped — empty is normal (a kit
+   * published straight from the gallery has no calendar slot).
+   */
+  async markEntriesPublishedForKit(args: {
+    userId: string;
+    assetKitId: string;
+  }): Promise<CalendarEntry[]> {
+    const assetKitId = args.assetKitId.trim();
+    if (!assetKitId) {
+      throw new Error("assetKitId is required");
+    }
+    return this.markPublished({ userId: args.userId, assetKitId });
   }
 }
 
@@ -349,6 +430,68 @@ const defaultSetSchedule: CalendarEntryScheduleSetter = async ({
         )
         .returning();
   return updated ?? null;
+};
+
+/**
+ * Default generated-marker — one conditional UPDATE keyed on the plan item.
+ *
+ * `status = 'planned'` is the guard that makes this safe to call at any time: a
+ * generation write arriving late (or a re-run) can never drag an entry the user
+ * has since scheduled — or one that has already published — backwards. The
+ * `(content_plan_id, plan_item_id)` pair is the same key the auto-create unique
+ * index uses, so this needs no new lookup path.
+ */
+const defaultMarkGenerated: CalendarEntryGeneratedMarker = async ({
+  userId,
+  contentPlanId,
+  planItemId,
+  assetKitId,
+}) => {
+  const [{ db }, { calendarEntries }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [updated] = await db
+    .update(calendarEntries)
+    .set({ status: "generated", assetKitId })
+    .where(
+      and(
+        eq(calendarEntries.userId, userId),
+        eq(calendarEntries.contentPlanId, contentPlanId),
+        eq(calendarEntries.planItemId, planItemId),
+        eq(calendarEntries.status, "planned"),
+      ),
+    )
+    .returning();
+  return updated ?? null;
+};
+
+/**
+ * Default published-marker — every owned entry carrying this kit that hasn't
+ * already published. `published` is terminal here, so the status filter keeps a
+ * re-poll of the same completed job from rewriting rows it already moved.
+ */
+const defaultMarkPublished: CalendarEntryPublishedMarker = async ({
+  userId,
+  assetKitId,
+}) => {
+  const [{ db }, { calendarEntries }, { and, eq, inArray }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  return db
+    .update(calendarEntries)
+    .set({ status: "published" })
+    .where(
+      and(
+        eq(calendarEntries.userId, userId),
+        eq(calendarEntries.assetKitId, assetKitId),
+        inArray(calendarEntries.status, ["generated", "scheduled", "failed"]),
+      ),
+    )
+    .returning();
 };
 
 export const calendarService = new CalendarService();

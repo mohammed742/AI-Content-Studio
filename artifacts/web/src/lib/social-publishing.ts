@@ -523,6 +523,14 @@ export type PublishJobGetter = (
 ) => Promise<PublishJob | null>;
 /** List a user's publish jobs, newest first. */
 export type PublishJobLister = (userId: string) => Promise<PublishJob[]>;
+/**
+ * DEV-43: record that a kit actually went live — flip the Asset Kit's own
+ * status and advance any Calendar Entry it fills. Injectable.
+ */
+export type PublishCompletionRecorder = (args: {
+  userId: string;
+  assetKitId: string;
+}) => Promise<void>;
 
 export interface SocialPublishingServiceConfig {
   muapi?: SocialMuapiClient;
@@ -536,6 +544,7 @@ export interface SocialPublishingServiceConfig {
   updateJob?: PublishJobUpdater;
   getJob?: PublishJobGetter;
   listJobs?: PublishJobLister;
+  recordPublished?: PublishCompletionRecorder;
 }
 
 export interface PublishAssetKitRequest {
@@ -599,6 +608,7 @@ export class SocialPublishingService {
   private readonly updateJob: PublishJobUpdater;
   private readonly getJob: PublishJobGetter;
   private readonly listJobs: PublishJobLister;
+  private readonly recordPublished: PublishCompletionRecorder;
 
   constructor(config: SocialPublishingServiceConfig = {}) {
     this.muapi = config.muapi ?? defaultSocialMuapiClient;
@@ -612,6 +622,7 @@ export class SocialPublishingService {
     this.updateJob = config.updateJob ?? defaultUpdateJob;
     this.getJob = config.getJob ?? defaultGetJob;
     this.listJobs = config.listJobs ?? defaultListJobs;
+    this.recordPublished = config.recordPublished ?? defaultRecordPublished;
   }
 
   /**
@@ -739,15 +750,34 @@ export class SocialPublishingService {
     const poll = await this.publishClient.pollPublish(job.muapiRequestId);
     const cost = job.cost + poll.cost;
     if (poll.status === "completed") {
-      return (
+      const updated =
         (await this.updateJob(job.userId, job.id, {
           status: "completed",
           resultUrl: poll.resultUrl ?? null,
           error: null,
           cost,
           completedAt: new Date(),
-        })) ?? job
-      );
+        })) ?? job;
+      // DEV-43: this is the single point every Publish Job passes through on
+      // its way to `completed` — the scheduler's poll and the /social page's
+      // read-poll both land here — so hooking status tracking here is what
+      // makes a *manual* publish update the Gallery and Calendar too.
+      // Best-effort: a bookkeeping failure must never cost the user the record
+      // of a publish that really happened.
+      if (job.assetKitId) {
+        try {
+          await this.recordPublished({
+            userId: job.userId,
+            assetKitId: job.assetKitId,
+          });
+        } catch (error) {
+          console.error(
+            "[social-publishing] publish status tracking failed:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+      return updated;
     }
     if (poll.status === "failed") {
       return (
@@ -1101,6 +1131,30 @@ const defaultListJobs: PublishJobLister = async (userId) => {
     .from(publishJobs)
     .where(eq(publishJobs.userId, userId))
     .orderBy(desc(publishJobs.createdAt));
+};
+
+/**
+ * DEV-43 default — delegate to the two modules that own these rows rather than
+ * writing their tables from here: the kit's own status to `asset-kit.ts`, the
+ * calendar slots to `calendar.ts`. The two are independent, so a failure of one
+ * must not silently skip the other.
+ */
+const defaultRecordPublished: PublishCompletionRecorder = async ({
+  userId,
+  assetKitId,
+}) => {
+  const [{ assetKitService }, { calendarService }] = await Promise.all([
+    import("./asset-kit.ts"),
+    import("./calendar.ts"),
+  ]);
+  const results = await Promise.allSettled([
+    assetKitService.markPublished(userId, assetKitId),
+    calendarService.markEntriesPublishedForKit({ userId, assetKitId }),
+  ]);
+  const rejected = results.find((result) => result.status === "rejected");
+  if (rejected?.status === "rejected") {
+    throw rejected.reason;
+  }
 };
 
 export const socialPublishingService = new SocialPublishingService();

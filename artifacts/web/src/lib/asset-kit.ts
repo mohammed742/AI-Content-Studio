@@ -72,11 +72,23 @@ export function extensionFor(contentType: string, mediaType: MediaType): string 
   return known[contentType.split(";")[0].trim()] ?? (mediaType === "video" ? "mp4" : "png");
 }
 
+/**
+ * DEV-43: set an owned kit's status. Ownership lives in the UPDATE's own
+ * predicate, so a foreign kit resolves `null` rather than being touched.
+ * Injectable.
+ */
+export type KitStatusSetter = (
+  userId: string,
+  kitId: string,
+  status: AssetKit["status"],
+) => Promise<AssetKit | null>;
+
 export interface AssetKitServiceConfig {
   download?: MediaDownloader;
   upload?: MediaUploader;
   save?: KitSaver;
   embed?: GenerationEmbedder;
+  setStatus?: KitStatusSetter;
   now?: () => number;
 }
 
@@ -85,6 +97,7 @@ export class AssetKitService {
   private readonly upload: MediaUploader;
   private readonly save: KitSaver;
   private readonly embed: GenerationEmbedder;
+  private readonly setStatus: KitStatusSetter;
   private readonly now: () => number;
 
   constructor(config: AssetKitServiceConfig = {}) {
@@ -92,6 +105,7 @@ export class AssetKitService {
     this.upload = config.upload ?? defaultUpload;
     this.save = config.save ?? defaultSave;
     this.embed = config.embed ?? defaultEmbed;
+    this.setStatus = config.setStatus ?? defaultSetStatus;
     this.now = config.now ?? (() => Date.now());
   }
 
@@ -131,6 +145,19 @@ export class AssetKitService {
     }
 
     return kit;
+  }
+
+  /**
+   * DEV-43: the kit has gone live on a social platform. Driven by a Publish Job
+   * reaching `completed` (`social-publishing.ts`), which is the only thing that
+   * proves a post actually exists — `ASSET_KIT_STATUSES` has carried
+   * `published` since DEV-23, but nothing ever wrote it until now.
+   *
+   * Resolves `null` when no row matched (deleted, or not this user's). This is
+   * background bookkeeping, so a miss is a no-op rather than an error.
+   */
+  markPublished(userId: string, kitId: string): Promise<AssetKit | null> {
+    return this.setStatus(userId, kitId, "published");
   }
 }
 
@@ -179,6 +206,21 @@ const defaultEmbed: GenerationEmbedder = async (userId, content, sourceId) => {
     embedding: embeddings[0],
     sourceId,
   });
+};
+
+/** Default status setter — owner-scoped UPDATE (DEV-43). */
+const defaultSetStatus: KitStatusSetter = async (userId, kitId, status) => {
+  const [{ db }, { assetKits }, { and, eq }] = await Promise.all([
+    import("@/db"),
+    import("@/db/schema"),
+    import("drizzle-orm"),
+  ]);
+  const [updated] = await db
+    .update(assetKits)
+    .set({ status })
+    .where(and(eq(assetKits.id, kitId), eq(assetKits.userId, userId)))
+    .returning();
+  return updated ?? null;
 };
 
 export const assetKitService = new AssetKitService();

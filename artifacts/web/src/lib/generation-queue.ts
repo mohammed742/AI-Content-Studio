@@ -116,12 +116,24 @@ export function matchProduct(
   );
 }
 
+/**
+ * DEV-43: advance the item's Calendar Entry to `generated` and link the kit it
+ * just produced. Best-effort at the call site — see `processItem`. Injectable.
+ */
+export type CalendarGeneratedMarker = (args: {
+  userId: string;
+  planId: string;
+  planItemId: string;
+  assetKitId: string;
+}) => Promise<void>;
+
 export interface GenerationQueueConfig {
   photo?: PhotoPipeline;
   graphic?: GraphicPipeline;
   caption?: CaptionPipeline;
   assemble?: KitAssembler;
   updateItem?: ItemUpdater;
+  markCalendarGenerated?: CalendarGeneratedMarker;
 }
 
 export class GenerationQueueService {
@@ -130,6 +142,7 @@ export class GenerationQueueService {
   private readonly caption: CaptionPipeline;
   private readonly assemble: KitAssembler;
   private readonly updateItem: ItemUpdater;
+  private readonly markCalendarGenerated: CalendarGeneratedMarker;
 
   constructor(config: GenerationQueueConfig = {}) {
     this.photo = config.photo ?? defaultPhoto;
@@ -137,6 +150,8 @@ export class GenerationQueueService {
     this.caption = config.caption ?? defaultCaption;
     this.assemble = config.assemble ?? defaultAssemble;
     this.updateItem = config.updateItem ?? defaultUpdateItem;
+    this.markCalendarGenerated =
+      config.markCalendarGenerated ?? defaultMarkCalendarGenerated;
   }
 
   /**
@@ -237,6 +252,25 @@ export class GenerationQueueService {
         assetKitId: kit.id,
         mediaUrl: kit.mediaUrl,
       });
+
+      // DEV-43: the item's Calendar Entry picks up the kit and becomes
+      // `generated` — which is what makes the DEV-42 schedule opt-in reachable.
+      // Deliberately caught here rather than by the outer handler: a calendar
+      // bookkeeping write must never mark a successful generation `failed`.
+      try {
+        await this.markCalendarGenerated({
+          userId,
+          planId,
+          planItemId: item.id,
+          assetKitId: kit.id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown";
+        console.error(
+          `[generation-queue] calendar status update failed for item ${item.id}:`,
+          message,
+        );
+      }
       return { cost: itemCost };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -334,6 +368,26 @@ const defaultUpdateItem: ItemUpdater = async (planId, itemId, patch) => {
       )`,
     })
     .where(eq(contentPlans.id, planId));
+};
+
+/**
+ * DEV-43 default — delegate to the Calendar Service, which owns the conditional
+ * update (and its `status = 'planned'` guard). Lazily imported like every other
+ * default seam so this module still loads under the bare Node test runner.
+ */
+const defaultMarkCalendarGenerated: CalendarGeneratedMarker = async ({
+  userId,
+  planId,
+  planItemId,
+  assetKitId,
+}) => {
+  const { calendarService } = await import("./calendar.ts");
+  await calendarService.markEntryGenerated({
+    userId,
+    contentPlanId: planId,
+    planItemId,
+    assetKitId,
+  });
 };
 
 export const generationQueueService = new GenerationQueueService();

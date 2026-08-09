@@ -223,3 +223,75 @@ test("product_showcase with no products falls back to the graphic pipeline", asy
   assert.equal(f.photoCalls.length, 0);
   assert.equal(f.graphicCalls.length, 1);
 });
+
+// --- DEV-43: calendar status tracking -------------------------------------
+
+test("a completed item advances its Calendar Entry with the new kit", async () => {
+  const f = fakes();
+  const marks: Array<{
+    userId: string;
+    planId: string;
+    planItemId: string;
+    assetKitId: string;
+  }> = [];
+  const queue = new GenerationQueueService({
+    ...f,
+    markCalendarGenerated: async (args) => {
+      marks.push(args);
+    },
+  });
+
+  await queue.processPlan(request([item({ id: "a", type: "promo" })]));
+
+  assert.equal(marks.length, 1);
+  assert.equal(marks[0].planId, "plan-1");
+  assert.equal(marks[0].userId, "user-1");
+  assert.equal(marks[0].planItemId, "a");
+  // The same kit id the item itself was patched with — the entry and the plan
+  // item must never point at different kits.
+  const completed = f.updates.find((u) => u.patch.status === "completed");
+  assert.equal(marks[0].assetKitId, completed?.patch.assetKitId);
+});
+
+test("a failed item leaves its Calendar Entry alone", async () => {
+  // Decision (DEV-43): `failed` on an entry means *publish* failed, and its
+  // retry path assumes an Asset Kit exists. A generation failure has none, so
+  // the entry stays `planned` and the item's own Retry on /plan owns recovery.
+  const f = fakes();
+  let marked = false;
+  const queue = new GenerationQueueService({
+    ...f,
+    graphic: async () => {
+      throw new Error("model exploded");
+    },
+    markCalendarGenerated: async () => {
+      marked = true;
+    },
+  });
+
+  const result = await queue.processPlan(request([item({ id: "a", type: "promo" })]));
+
+  assert.equal(result.failed, 1);
+  assert.equal(marked, false);
+});
+
+test("a calendar write failure never fails the generation", async () => {
+  // The generation is the expensive, user-visible work; calendar bookkeeping is
+  // secondary and must not be able to take it down.
+  const f = fakes();
+  const queue = new GenerationQueueService({
+    ...f,
+    markCalendarGenerated: async () => {
+      throw new Error("db unreachable");
+    },
+  });
+
+  const result = await queue.processPlan(request([item({ id: "a", type: "promo" })]));
+
+  assert.equal(result.completed, 1);
+  assert.equal(result.failed, 0);
+  assert.ok(result.totalCost > 0);
+  // And the item is still recorded as completed, not failed.
+  assert.ok(f.updates.some((u) => u.patch.status === "completed"));
+  assert.ok(!f.updates.some((u) => u.patch.status === "failed"));
+});

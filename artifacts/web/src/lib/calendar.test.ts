@@ -333,3 +333,126 @@ test("rescheduleEntry rejects an invalid date before touching the db", async () 
   );
   assert.equal(called, false);
 });
+
+// --- DEV-43: status tracking ----------------------------------------------
+
+/** A CalendarService with only the DEV-43 seams wired; the rest are inert. */
+function statusService(config: CalendarServiceConfig): CalendarService {
+  return new CalendarService({
+    insertEntries: async (values) => values as never,
+    listEntries: async () => [],
+    ...config,
+  });
+}
+
+test("markEntryGenerated links the kit and advances the entry, owner-scoped", async () => {
+  const calls: {
+    userId: string;
+    contentPlanId: string;
+    planItemId: string;
+    assetKitId: string;
+  }[] = [];
+  const service = statusService({
+    markGenerated: async (args) => {
+      calls.push(args);
+      return { id: "entry-1", status: "generated", assetKitId: args.assetKitId } as never;
+    },
+  });
+
+  const row = await service.markEntryGenerated({
+    userId: "user-1",
+    contentPlanId: "plan-1",
+    planItemId: "item-1",
+    assetKitId: "kit-1",
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].userId, "user-1"); // the ownership scope
+  assert.equal(calls[0].contentPlanId, "plan-1");
+  assert.equal(calls[0].planItemId, "item-1");
+  assert.equal((row as { status: string }).status, "generated");
+  assert.equal((row as { assetKitId: string }).assetKitId, "kit-1");
+});
+
+test("markEntryGenerated resolves null when nothing matched (no throw)", async () => {
+  // No match is the normal case for an entry that is already scheduled or
+  // published, or a plan whose auto-create never ran — this is a background
+  // bookkeeping write, so a refusal must not surface as an error.
+  const service = statusService({ markGenerated: async () => null });
+
+  const row = await service.markEntryGenerated({
+    userId: "user-1",
+    contentPlanId: "plan-1",
+    planItemId: "item-1",
+    assetKitId: "kit-1",
+  });
+
+  assert.equal(row, null);
+});
+
+test("markEntryGenerated rejects blank ids before touching the db", async () => {
+  let called = false;
+  const service = statusService({
+    markGenerated: async () => {
+      called = true;
+      return null;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.markEntryGenerated({
+        userId: "user-1",
+        contentPlanId: "  ",
+        planItemId: "item-1",
+        assetKitId: "kit-1",
+      }),
+    /required/i,
+  );
+  await assert.rejects(
+    () =>
+      service.markEntryGenerated({
+        userId: "user-1",
+        contentPlanId: "plan-1",
+        planItemId: "item-1",
+        assetKitId: "   ",
+      }),
+    /required/i,
+  );
+  assert.equal(called, false);
+});
+
+test("markEntriesPublishedForKit returns every entry it flipped", async () => {
+  const calls: { userId: string; assetKitId: string }[] = [];
+  const service = statusService({
+    markPublished: async (args) => {
+      calls.push(args);
+      return [
+        { id: "entry-1", status: "published" },
+        { id: "entry-2", status: "published" },
+      ] as never;
+    },
+  });
+
+  const rows = await service.markEntriesPublishedForKit({
+    userId: "user-1",
+    assetKitId: "kit-1",
+  });
+
+  assert.equal(calls[0].userId, "user-1");
+  assert.equal(calls[0].assetKitId, "kit-1");
+  assert.equal(rows.length, 2);
+});
+
+test("markEntriesPublishedForKit is a no-op when the kit is on no entry", async () => {
+  // Publishing a kit straight from the gallery is legitimate — it just has no
+  // calendar slot to advance.
+  const service = statusService({ markPublished: async () => [] });
+
+  const rows = await service.markEntriesPublishedForKit({
+    userId: "user-1",
+    assetKitId: "kit-1",
+  });
+
+  assert.deepEqual(rows, []);
+});

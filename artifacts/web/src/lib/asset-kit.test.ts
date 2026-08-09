@@ -149,3 +149,28 @@ test("video media gets a video extension in the R2 key", async () => {
 
   assert.equal(f.uploads[0].key, "asset-kits/user-1/99.mp4");
 });
+
+// --- DEV-43: kit lifecycle -------------------------------------------------
+
+test("markPublished flips the owned kit to published", async () => {
+  const calls: Array<{ userId: string; kitId: string }> = [];
+  const service = new AssetKitService({
+    setStatus: async (userId, kitId) => {
+      calls.push({ userId, kitId });
+      return { id: kitId, status: "published" } as never;
+    },
+  });
+
+  const kit = await service.markPublished("user-1", "kit-1");
+
+  assert.deepEqual(calls, [{ userId: "user-1", kitId: "kit-1" }]);
+  assert.equal((kit as { status: string }).status, "published");
+});
+
+test("markPublished resolves null for a kit that is not the user's", async () => {
+  // Ownership lives in the UPDATE's predicate, so a foreign kit simply matches
+  // no row — a no-op, not a thrown error on a background bookkeeping path.
+  const service = new AssetKitService({ setStatus: async () => null });
+
+  assert.equal(await service.markPublished("user-1", "kit-1"), null);
+});
