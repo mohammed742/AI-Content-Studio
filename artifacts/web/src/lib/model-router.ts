@@ -146,10 +146,14 @@ export const ROUTING_TABLE: Record<AssetType, RoutingEntry> = {
     // DEV-32 (STU-27): the plan's assembly step. `video-combiner` concatenates
     // the ordered UGC clips (talking head → B-roll → CTA) into one master.
     // Live schema (`GET /api/v1/models/video-combiner`, 2026-07-25): body
-    // `{ videos_list: [url,…], aspect_ratio? }`, cost $0.05 (dynamic). This is
-    // the primary assembly path; server-side FFmpeg is the documented fallback
-    // (plan step 6) — chosen to kill the FFmpeg-on-Replit risk. Single model,
-    // so premium falls back to standard.
+    // `{ videos_list: [url,…], aspect_ratio? }`, cost $0.05 (dynamic). Single
+    // model, so premium falls back to standard.
+    //
+    // ⚠️ **Fallback only since the 2026-08-09 DEV-32 re-run.** Server-side
+    // FFmpeg (`src/lib/ffmpeg.ts`) is now the primary assembly path; this entry
+    // is reached only when FFmpeg fails or is unavailable. A healthy render
+    // never routes here, so a `video_assemble` row in the pipeline logs is a
+    // signal worth reading, not routine traffic.
     standard: { model: "video-combiner", estimatedCost: 0.05 },
   },
   video_reframe: {

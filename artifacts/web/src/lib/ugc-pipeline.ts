@@ -236,6 +236,12 @@ export type BrollStep = (args: {
 }) => Promise<{ videoUrl: string; cost: number }>;
 export type AssemblyStep = (args: {
   clips: string[];
+  /**
+   * Scopes the R2 key of the FFmpeg-encoded master (DEV-32 re-run). Only the
+   * FFmpeg path stores anything — the `video-combiner` fallback returns a Muapi
+   * CDN URL and ignores this.
+   */
+  userId: string;
 }) => Promise<{ videoUrl: string; cost: number }>;
 export type ReframeStep = (args: {
   videoUrl: string;
@@ -400,6 +406,7 @@ export class UgcPipelineService {
         const brollUrl = required(outputs.brollUrl, "B-roll clip");
         const { videoUrl, cost } = await this.assembly({
           clips: [talkingHeadUrl, brollUrl],
+          userId: job.userId,
         });
         outputs.masterUrl = videoUrl;
         return cost;
@@ -507,9 +514,9 @@ const defaultBroll: BrollStep = async ({ productImageUrl }) => {
   return { videoUrl, cost };
 };
 
-const defaultAssembly: AssemblyStep = async ({ clips }) => {
+const defaultAssembly: AssemblyStep = async ({ clips, userId }) => {
   const { ugcAssemblyService } = await import("@/lib/ugc-assembly");
-  const { videoUrl, cost } = await ugcAssemblyService.assembleVideo({ clips });
+  const { videoUrl, cost } = await ugcAssemblyService.assembleVideo({ clips, userId });
   return { videoUrl, cost };
 };
 

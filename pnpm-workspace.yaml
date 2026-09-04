@@ -4,6 +4,9 @@ packages:
   - lib/integrations/*
   - scripts
 
+allowBuilds:
+  ffmpeg-static: set this to true or false
+
 autoInstallPeers: false
 
 catalog:
@@ -40,6 +43,11 @@ onlyBuiltDependencies:
   - '@clerk/shared'
   - '@swc/core'
   - esbuild
+  # DEV-32: ffmpeg-static downloads its platform binary in a postinstall script.
+  # Without this the package installs empty and `ffmpegPath` is null, which the
+  # UGC Assembly step reads as "FFmpeg unavailable" and silently falls back to
+  # video-combiner on every single render.
+  - ffmpeg-static
   - msw
   - sharp
   - unrs-resolver
