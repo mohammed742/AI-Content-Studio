@@ -35,6 +35,10 @@ OpenAI, Cloudflare R2.
 - Railway CLI installed and authenticated (`railway login`).
   Install with `npm i -g @railway/cli` — Homebrew has no bottle for macOS 12 and
   falls back to a from-source Rust build that does not complete.
+- **A domain you control.** The deployed app is backed by a Clerk **production**
+  instance, and Clerk validates a production instance by DNS records on your own
+  domain. A `*.up.railway.app` subdomain cannot work — you cannot add CNAME
+  records to `railway.app`. See §5 for the full sequence.
 - The GitHub repo connected to Railway. Because the source is GitHub, Railway
   builds **`origin/main`** — not your working tree. Anything uncommitted is not
   in the deploy. `HEAD` and its lockfile are self-consistent, so an out-of-date
@@ -52,11 +56,11 @@ Set these on the **`web`** service:
 | Variable | Needed at | Notes |
 |---|---|---|
 | `DATABASE_URL` | build + runtime | Neon pooled connection string |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | **build** + runtime | Inlined into the client bundle at build time — if it is missing during the build, auth is broken in the shipped bundle even if you add it later. Must start with `pk_` |
-| `CLERK_SECRET_KEY` | runtime | |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | **build** + runtime | `pk_live_…` from the **production** instance. Inlined into the client bundle at build time — if it is missing or wrong during the build, auth is broken in the shipped bundle even if you fix the variable later. Changing it needs a **rebuild**, not a restart |
+| `CLERK_SECRET_KEY` | runtime | `sk_live_…` from the **production** instance |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | build + runtime | `/sign-in` — already declared in `.railway/railway.ts`, no action needed |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | build + runtime | `/sign-up` — same |
-| `CLERK_WEBHOOK_SECRET` | runtime | Svix signing secret for `/api/webhooks/clerk` |
+| `CLERK_WEBHOOK_SECRET` | runtime | Svix signing secret for `/api/webhooks/clerk`, taken from the **production** instance's webhook endpoint — a different value from the dev instance's |
 | `MUAPI_API_KEY` | runtime | Visual generation + social publishing |
 | `OPENAI_API_KEY` | runtime | Text generation + embeddings |
 | `R2_ACCOUNT_ID` | runtime | |
@@ -79,14 +83,21 @@ Set these on the **`cron-publish`** service:
 > (IPv4), so the cron job must go over the **public** domain. Keep `CRON_SECRET`
 > strong — that URL is reachable from the internet by design.
 
-Local values live in `artifacts/web/.env.local` (gitignored). Push them with
-`deploy/railway/sync-env.sh` (see §4); compare against Railway with
-`railway variable list --service web`.
+Non-Clerk values (`DATABASE_URL`, `MUAPI_API_KEY`, `OPENAI_API_KEY`, `R2_*`,
+`CRON_SECRET`) are the same in both instances and live in
+`artifacts/web/.env.local`.
 
-**This deployment currently reuses the Clerk dev/test keys** — a deliberate call
-for a first staging URL. Clerk test instances are rate-limited and not intended
-for real users, so a production Clerk instance is required before this URL is
-put in front of anyone. See §5.2.
+**The Clerk values are not.** This deployment is backed by a Clerk **production**
+instance, and production keys are locked to your domain — Clerk rejects them on
+localhost with `Production Keys are only allowed for domain "your-domain.com"`.
+So they cannot replace the dev values you develop against. Keep them in a
+separate `artifacts/web/.env.production.local` (gitignored by `.env.*.local`);
+`deploy/railway/env.production.example` is the template.
+
+`deploy/railway/sync-env.sh` pushes a file's values to the `web` service and
+**refuses to push `pk_test_` / `sk_test_` keys** so a test-key deploy cannot
+happen by accident. Compare against Railway with
+`railway variable list --service web`.
 
 ---
 
@@ -126,16 +137,17 @@ Set the cron schedule, which IaC cannot express:
 railway environment edit --service-config cron-publish deploy.cronSchedule "*/15 * * * *"
 ```
 
-Push the secrets. `deploy/railway/sync-env.sh` reads `artifacts/web/.env.local`
-and sets each key on the `web` service; it prints key names only, never values.
-Run it yourself rather than delegating it:
+Push the secrets. Because the app is backed by a Clerk **production** instance,
+prepare `artifacts/web/.env.production.local` first (see §3 and §5) — the sync
+script refuses `pk_test_` / `sk_test_` keys. Dry-run it, then apply. It prints
+key names only, never values; run it yourself rather than delegating it:
 
 ```bash
-./deploy/railway/sync-env.sh
+./deploy/railway/sync-env.sh --file artifacts/web/.env.production.local
 ```
 
 ```bash
-./deploy/railway/sync-env.sh --apply
+./deploy/railway/sync-env.sh --file artifacts/web/.env.production.local --apply
 ```
 
 Mirror `CRON_SECRET` onto the cron service (the script prints this command too)
@@ -145,29 +157,91 @@ and confirm both services are healthy:
 railway status
 ```
 
-## 5. After the first successful deploy
+> **Ordering:** the Clerk publishable key is inlined at build time, so if you
+> apply the config before the production keys exist, the first build ships a
+> bundle without them. That is recoverable — set the variables and
+> `railway redeploy --service web` — but it is not fixed by a restart alone.
+> §5 has the full sequence.
 
-1. **Assign the domain.** Railway generates `*.up.railway.app`; attach the real
-   domain in *Settings → Networking* if there is one.
-2. **Clerk.** Add the Railway domain to allowed origins and repoint the webhook
-   endpoint at
-   `https://<domain>/api/webhooks/clerk`. Copy the new signing secret into
-   `CLERK_WEBHOOK_SECRET` and redeploy. **Before real users:** create a Clerk
-   production instance, swap in the `pk_live`/`sk_live` pair, and redo this step
-   against it — the publishable key is inlined at build time, so that needs a
-   rebuild, not just a variable change.
-3. **Verify the webhook** — sign up a throwaway user and confirm a row lands in
-   `users`. `middleware.ts` deliberately lets `/api/webhooks/*`, `/webhook/*` and
-   `/api/cron/*` past Clerk, so a 401 here means the secret, not the matcher.
-4. **Social OAuth.** `/api/social/connect` builds its `redirect_uri` from the
+---
+
+## 5. Domain + Clerk production instance
+
+**Do this before putting the URL in front of anyone.** The order matters: the
+Clerk publishable key is inlined into the client bundle at build time, so it has
+to be correct *before* the build you intend to ship.
+
+### 5.1 Attach the custom domain
+
+Railway generates a `*.up.railway.app` host on first deploy. That is fine for a
+smoke test, but Clerk cannot issue a production instance against it — Clerk
+validates production by DNS records, and you cannot add CNAMEs to `railway.app`.
+
+In Railway *Settings → Networking → Custom Domain*, add your domain (or a
+subdomain such as `app.yourdomain.com`) and create the CNAME Railway shows you.
+
+### 5.2 Create the Clerk production instance
+
+In the Clerk Dashboard, create a **production** instance for the same
+application, then:
+
+1. Add the DNS records Clerk lists under **Domains** — typically CNAMEs for
+   `clerk`, `accounts`, and the `clkmail` / DKIM mail records. Propagation can
+   take up to 48 hours.
+2. If your DNS is behind Cloudflare, set these records to **DNS-only** (grey
+   cloud). Clerk's validation is a DNS check and fails against a proxied record.
+3. If the app lives on a subdomain, Clerk asks whether it is a **Primary** or
+   **Secondary** application — Primary keeps Clerk on the root domain
+   (`clerk.yourdomain.com`), Secondary scopes it to the subdomain.
+4. Copy the `pk_live_` / `sk_live_` pair from **API keys**.
+5. Configure the OAuth providers again if any are used — a production instance
+   does **not** inherit the development instance's shared credentials, and Clerk's
+   dev-mode shared OAuth apps are not available in production.
+
+### 5.3 Repoint the webhook
+
+Add a webhook endpoint on the **production** instance pointing at
+`https://<your-domain>/api/webhooks/clerk`, subscribed to the same user events
+the dev instance uses. Copy its **signing secret** — it is a different value from
+the dev instance's.
+
+### 5.4 Push the values and rebuild
+
+Fill in `artifacts/web/.env.production.local` from
+`deploy/railway/env.production.example`, then:
+
+```bash
+./deploy/railway/sync-env.sh --file artifacts/web/.env.production.local --apply
+```
+
+A rebuild is required, not just a restart, because of the build-time inlining:
+
+```bash
+railway redeploy --service web
+```
+
+### 5.5 Verify
+
+1. **Sign up a throwaway user** on the real domain and confirm a row lands in
+   `users`. That exercises the webhook end to end. `middleware.ts` deliberately
+   lets `/api/webhooks/*`, `/webhook/*` and `/api/cron/*` past Clerk, so a 401
+   here is the signing secret, not the matcher.
+2. **Check the shipped bundle carries the live key** — a `pk_test_` string in the
+   served JS means the build predates the variable change:
+
+   ```bash
+   curl -s https://<your-domain>/ | grep -o 'pk_[a-z]*_' | sort -u
+   ```
+
+3. **Social OAuth.** `/api/social/connect` builds its `redirect_uri` from the
    incoming request origin, so it follows the domain automatically — but add the
-   Railway callback URL to whatever Muapi/platform app allowlists apply, and
-   **check the scheme is `https` and not `http`** on the first real connect.
-   Railway terminates TLS at its proxy, and if the derived origin comes back as
-   `http://` the OAuth round-trip will break. This has not been exercised yet.
-5. **Cron.** Trigger the job once by hand from the dashboard and confirm a
+   callback URL to whatever Muapi/platform app allowlists apply, and **check the
+   scheme is `https` and not `http`** on the first real connect. Railway
+   terminates TLS at its proxy, and if the derived origin comes back as `http://`
+   the OAuth round-trip breaks. This has not been exercised yet.
+4. **Cron.** Trigger the job once by hand from the dashboard and confirm a
    `[cron-publish] ok` line with a scheduler summary.
-6. **Neon.** The schema is applied out-of-band via the `scripts/apply-*-ddl.mjs`
+5. **Neon.** The schema is applied out-of-band via the `scripts/apply-*-ddl.mjs`
    helpers, not by a migration on deploy. There is no `preDeployCommand` — if you
    later add one, `drizzle-kit push` is not safe to run unattended.
 
@@ -192,6 +266,15 @@ railway status
   `NEXT_PHASE=phase-production-build`, so a build can succeed with variables
   missing and then crash-loop at runtime. Read the deploy logs, not just the
   build logs.
+- **Clerk production keys are domain-locked.** They only work on the domain the
+  production instance is verified against, so they cannot be dropped into
+  `.env.local` for local development — local dev keeps using the dev instance's
+  `pk_test_` pair. Two instances means two sets of OAuth provider credentials and
+  two webhook signing secrets; a "webhook works locally, 401s in production"
+  report is almost always the wrong secret rather than a code bug.
+- **The publishable key is baked into the build.** Every other variable takes
+  effect on restart; this one needs `railway redeploy`. `curl`-ing the served
+  page for `pk_test_` (see §5.5) is the fastest way to catch a stale bundle.
 - **`.replit` / `allowedDevOrigins`.** Replit-only leftovers. Harmless in
   production; not worth removing until Replit is fully retired.
 - **Agent tooling.** `railway setup agent` installs Railway's MCP server and
