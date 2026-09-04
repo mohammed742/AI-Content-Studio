@@ -1,0 +1,16 @@
+# Same format as .dockerignore — trims what `railway up` uploads.
+node_modules
+.git
+.next
+.next-*
+dist
+*.tsbuildinfo
+.cache
+.local
+attached_assets
+
+# NOTE: do not exclude any artifacts/* or lib/* package — they are pnpm workspace
+# members listed in pnpm-lock.yaml, and a frozen-lockfile install fails without them.
+.canvas
+.claude
+.agents
