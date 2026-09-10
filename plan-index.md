@@ -15,7 +15,7 @@
 | 2.5 | `plan-phase-2-5.md` | Coverage & Asset Foundation (text graphics, media library, composites, carousels, data files, presenters) | 7 | Not started |
 | 3 | `plan-phase-3.md` | UGC Video Pipeline (<$1/video) — depends on Phase 2.5 presenters | 7 | Not started |
 | 4 | `plan-phase-4.md` | Social Publishing (YouTube/TikTok/Instagram) | 6 | Not started |
-| 5 | `plan-phase-5.md` | Content Calendar + Scheduling | 4 | Not started |
+| 5 | `plan-phase-5.md` | Content Calendar + Scheduling | 4 | ✅ Done (2026-09-10; live scheduled-publish QA carried over) |
 | 6 | `plan-phase-6.md` | Stripe Billing | 5 | Not started |
 | 7 | `plan-phase-7.md` | Admin Panel + Analytics | 6 | Not started |
 

@@ -1,6 +1,6 @@
 # Phase 5 — Content Calendar + Scheduling
 
-**Status**: All 4 slices built (STU-38/39/40 committed; STU-41 built 2026-08-07, awaiting review + live QA)
+**Status**: ✅ Complete — closed 2026-09-10 at the human's direction. All 4 slices built, committed and pushed (STU-38 `98bf4e5`, STU-39 `ad13bda`, STU-40 `ef1bbb8`, STU-41 `73bdc45`); `typecheck ✅ · tests 419/419 ✅ · lint ✅`. **Carried over:** live end-to-end QA of scheduled publishing (approve a plan → entry reads generated → schedule it → cron publishes → entry reads Published) has **not** been run — it needs the Railway deploy (a public URL for the cron and for social OAuth). Acceptance criterion 3 is verified by tests and local probes only, not against a real social account.
 **Goal**: Visual calendar integrating with Content Plans. Scheduled auto-publishing.
 
 ## Slices
